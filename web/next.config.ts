@@ -11,6 +11,7 @@ const version = readFileSync(resolve(webDir, "../VERSION"), "utf8").trim() || "d
 export default function nextConfig(phase: string): NextConfig {
   const isDev = phase === PHASE_DEVELOPMENT_SERVER;
   return {
+    allowedDevOrigins: isDev ? ["*.*.*.*"] : [],
     typescript: {
       ignoreBuildErrors: true,
     },

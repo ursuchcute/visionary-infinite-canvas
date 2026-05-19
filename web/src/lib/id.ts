@@ -1,3 +1,5 @@
+import { nanoid } from "nanoid";
+
 export function createId() {
-  return crypto.randomUUID();
+  return nanoid();
 }
