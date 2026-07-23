@@ -41,6 +41,26 @@ function localPluginsManifest(): Plugin {
 export default defineConfig({
     base: process.env.VITE_BASE || "/",
     plugins: [react(), localPluginsManifest()],
+    server: {
+        proxy: {
+            // Route OpenAPI calls through the local dev server. The Visionary
+            // edge endpoint accepts Base64 reference images, while the
+            // same-origin proxy keeps browser requests clear of CORS blocking.
+            "/visionary-api-proxy": {
+                target: "https://api.visionary.beer",
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/visionary-api-proxy/, ""),
+            },
+            // Visionary returns signed image URLs from visionary.beer. Proxy only
+            // that fixed origin so the browser can persist generated images in
+            // IndexedDB without being blocked by cross-origin fetch rules.
+            "/visionary-image-proxy": {
+                target: "https://visionary.beer",
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/visionary-image-proxy/, ""),
+            },
+        },
+    },
     resolve: {
         alias: {
             "@": resolve(webDir, "src"),

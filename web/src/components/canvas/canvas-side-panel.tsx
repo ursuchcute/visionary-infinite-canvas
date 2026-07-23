@@ -1,7 +1,7 @@
 import { memo, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { App, Empty, Input, Popconfirm, Select, Spin, Tag } from "antd";
+import { App, Empty, Input, Popconfirm, Select, Spin, Tag, Tooltip } from "antd";
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, Check, ChevronRight, Download, Eye, FileText, Image as ImageIcon, ListChecks, Music2, Plus, Search, Settings2, Square, Trash2, Type, Video } from "lucide-react";
+import { BookOpen, Check, ChevronLeft, ChevronRight, Download, Eye, FileText, Image as ImageIcon, ListChecks, Music2, Plus, Search, Settings2, Square, Trash2, Type, Video } from "lucide-react";
 import { motion } from "motion/react";
 
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
@@ -114,6 +114,26 @@ export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onInsertA
                 <button type="button" className="absolute inset-y-0 right-0 z-40 w-4 translate-x-1/2 cursor-col-resize" onPointerDown={startResize} aria-label="调整左侧面板宽度" />
             </motion.aside>
         </motion.div>
+    );
+}
+
+export function CanvasSidePanelToggle() {
+    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const panelOpen = useCanvasSidePanelStore((state) => state.panelOpen);
+    const togglePanel = useCanvasSidePanelStore((state) => state.togglePanel);
+
+    return (
+        <Tooltip title={panelOpen ? "收起面板" : "展开面板"} placement="right">
+            <button
+                type="button"
+                onClick={togglePanel}
+                aria-label={panelOpen ? "收起面板" : "展开面板"}
+                className="absolute left-0 top-1/2 z-[65] grid h-12 w-6 -translate-y-1/2 place-items-center rounded-none border shadow-sm backdrop-blur transition hover:bg-black/5 dark:hover:bg-white/10 xl:h-[60px] xl:w-7 [&_svg]:size-3.5 xl:[&_svg]:size-4"
+                style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
+            >
+                {panelOpen ? <ChevronLeft /> : <ChevronRight />}
+            </button>
+        </Tooltip>
     );
 }
 

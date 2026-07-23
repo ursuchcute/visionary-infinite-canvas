@@ -220,8 +220,8 @@ export function ImageToolSettingsModal({
 function PreviewToolbarItem({ tool, showLabels }: { tool: PreviewTool; showLabels: boolean }) {
     return (
         <Tooltip title={tool.title}>
-            <span className="flex h-12 shrink-0 items-center px-1.5" style={{ color: tool.danger ? "#ef4444" : undefined }}>
-                <span className={`flex h-9 items-center rounded-lg px-2 ${showLabels ? "gap-2" : "justify-center"}`}>
+            <span className="flex h-12 shrink-0 items-center px-1" style={{ color: tool.danger ? "#ef4444" : undefined }}>
+                <span className={`flex h-9 items-center rounded-lg px-1 ${showLabels ? "gap-2" : "justify-center"}`}>
                     {tool.icon}
                     {showLabels ? <span className="whitespace-nowrap">{tool.label}</span> : null}
                 </span>

@@ -1,12 +1,14 @@
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode, RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Button, Segmented, Switch } from "antd";
-import { CircleDot, Eraser, Grid2x2, Group, Hand, Image as ImageIcon, Info, Moon, Music2, Palette, Puzzle, Redo2, Settings2, Square, Sun, Trash2, Type, Undo2, Upload, Video } from "lucide-react";
+import { ChevronsDown, ChevronsUp, CircleDot, Eraser, Grid2x2, Group, Hand, Image as ImageIcon, Info, Moon, Music2, Palette, Puzzle, Redo2, Settings2, Square, Sun, Trash2, Type, Undo2, Upload, Video } from "lucide-react";
 
 import { canvasThemes, type CanvasBackgroundMode, type CanvasColorTheme, type CanvasTheme } from "@/lib/canvas-theme";
 import { getNodePluginId, listNodeDefinitions, useNodeRegistryVersion } from "@/lib/canvas/node-registry";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
+
+const TOOLBAR_COLLAPSED_KEY = "canvas-toolbar-collapsed";
 
 export function CanvasToolbar({
     selectedCount,
@@ -62,13 +64,25 @@ export function CanvasToolbar({
     const [panelX, setPanelX] = useState(0);
     const [extensionsOpen, setExtensionsOpen] = useState(false);
     const [extPanelX, setExtPanelX] = useState(0);
+    const [toolbarCollapsed, setToolbarCollapsed] = useState(() => typeof window !== "undefined" && localStorage.getItem(TOOLBAR_COLLAPSED_KEY) === "1");
     // 扩展(插件)节点,随注册表变化实时更新
     useNodeRegistryVersion();
     const extensionDefs = listNodeDefinitions().filter((def) => def.showInCreateMenu !== false && getNodePluginId(def.type) !== "builtin");
     const dockStyle = { background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item, boxShadow: colorTheme === "dark" ? "0 18px 45px rgba(0,0,0,.32)" : "0 16px 40px rgba(28,25,23,.12)" };
     const hoverStyle = { background: theme.toolbar.itemHover, color: theme.toolbar.activeText };
     const activeStyle = { background: theme.toolbar.activeBg, color: theme.toolbar.activeText };
-    const tip = hovered ? toolLabel(hovered) : "";
+    const tip = hovered === "tool-toggle" ? (toolbarCollapsed ? "展开工具栏" : "收起工具栏") : hovered ? toolLabel(hovered) : "";
+
+    const toggleToolbar = () => {
+        setToolbarCollapsed((current) => {
+            const next = !current;
+            localStorage.setItem(TOOLBAR_COLLAPSED_KEY, next ? "1" : "0");
+            return next;
+        });
+        setExtensionsOpen(false);
+        setAppearanceOpen(false);
+        setHovered(null);
+    };
 
     // 点击工具栏(含弹出面板)以外的地方,关闭弹出的扩展节点/画布外观面板
     useEffect(() => {
@@ -84,12 +98,18 @@ export function CanvasToolbar({
     }, [extensionsOpen, appearanceOpen]);
 
     return (
-        <div ref={rootRef} className="pointer-events-none absolute bottom-5 z-50 flex justify-center" style={{ left: 300, right: 16 }}>
+        <div ref={rootRef} className={`pointer-events-none absolute left-[196px] right-[196px] z-50 flex justify-center xl:left-[292px] xl:right-[292px] ${toolbarCollapsed ? "bottom-0" : "bottom-2 xl:bottom-5"}`}>
             {tip ? <DockTip label={tip} x={tipX} theme={theme} /> : null}
-            <div ref={wrapRef} className="thin-scrollbar pointer-events-auto flex h-14 max-w-full items-center gap-1 overflow-x-auto rounded-xl border px-2 shadow-lg backdrop-blur [&>*]:shrink-0" style={dockStyle}>
-                <ToolbarButton id="tool-hand" label="移动/选择" active={!selectedCount} hovered={hovered} activeStyle={activeStyle} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onDeselect}>
-                    <Hand className="size-4.5" />
-                </ToolbarButton>
+            <div
+                ref={wrapRef}
+                className={`thin-scrollbar pointer-events-auto flex items-center overflow-x-auto border shadow-lg backdrop-blur [&>*]:shrink-0 ${toolbarCollapsed ? "h-6 w-12 justify-center gap-0 rounded-none px-0 xl:h-7 xl:w-[60px]" : "h-10 max-w-full gap-0.5 rounded-xl px-1 xl:h-14 xl:gap-1 xl:px-2"}`}
+                style={dockStyle}
+            >
+                {!toolbarCollapsed ? (
+                    <>
+                        <ToolbarButton id="tool-hand" label="移动/选择" active={!selectedCount} hovered={hovered} activeStyle={activeStyle} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onDeselect}>
+                            <Hand className="size-4.5" />
+                        </ToolbarButton>
                 <ToolbarButton id="tool-undo" label="撤销" disabled={!canUndo} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onUndo}>
                     <Undo2 className="size-4.5" />
                 </ToolbarButton>
@@ -166,14 +186,20 @@ export function CanvasToolbar({
                     </>
                 ) : null}
                 <Divider theme={theme} />
-                <ToolbarButton id="tool-clear" label="清空画布" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onClear} danger>
-                    <Eraser className="size-4.5" />
+                        <ToolbarButton id="tool-clear" label="清空画布" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onClear} danger>
+                            <Eraser className="size-4.5" />
+                        </ToolbarButton>
+                    </>
+                ) : null}
+                {!toolbarCollapsed ? <Divider theme={theme} /> : null}
+                <ToolbarButton id="tool-toggle" label={toolbarCollapsed ? "展开工具栏" : "收起工具栏"} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={toggleToolbar} compact={toolbarCollapsed} labeled={!toolbarCollapsed}>
+                    {toolbarCollapsed ? <ChevronsUp className="size-4.5" /> : <span className="inline-flex items-center gap-1"><ChevronsDown className="size-4.5" /><span>收起</span></span>}
                 </ToolbarButton>
             </div>
 
-            {extensionsOpen && extensionDefs.length ? (
+            {!toolbarCollapsed && extensionsOpen && extensionDefs.length ? (
                 <div
-                    className="thin-scrollbar pointer-events-auto absolute bottom-[72px] z-30 max-h-[50vh] w-[240px] -translate-x-1/2 overflow-y-auto rounded-xl border p-2 shadow-xl backdrop-blur"
+                    className="thin-scrollbar pointer-events-auto absolute bottom-[52px] z-30 max-h-[50vh] w-[200px] -translate-x-1/2 overflow-y-auto rounded-xl border p-2 shadow-xl backdrop-blur xl:bottom-[72px] xl:w-[240px]"
                     style={{ left: extPanelX || "50%", background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item }}
                 >
                     <div className="px-1.5 pb-1.5 text-[11px] font-medium opacity-50">扩展节点</div>
@@ -201,9 +227,9 @@ export function CanvasToolbar({
                 </div>
             ) : null}
 
-            {appearanceOpen ? (
+            {!toolbarCollapsed && appearanceOpen ? (
                 <div
-                    className="pointer-events-auto absolute bottom-[72px] z-30 w-[248px] -translate-x-1/2 rounded-xl border p-2.5 shadow-xl backdrop-blur"
+                    className="pointer-events-auto absolute bottom-[52px] z-30 w-[220px] -translate-x-1/2 rounded-xl border p-2.5 shadow-xl backdrop-blur xl:bottom-[72px] xl:w-[248px]"
                     style={{ left: panelX || "50%", background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item }}
                 >
                     <div className="px-1 pb-2 text-sm font-medium opacity-65">画布外观</div>
@@ -277,6 +303,8 @@ function ToolbarButton({
     onClick,
     disabled = false,
     danger = false,
+    compact = false,
+    labeled = false,
     children,
 }: {
     id: string;
@@ -291,6 +319,8 @@ function ToolbarButton({
     onClick?: (event: ReactMouseEvent<HTMLElement>) => void;
     disabled?: boolean;
     danger?: boolean;
+    compact?: boolean;
+    labeled?: boolean;
     children: ReactNode;
 }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
@@ -299,7 +329,7 @@ function ToolbarButton({
         <Button
             type="text"
             aria-label={label}
-            className="!h-8 !w-8 !min-w-8 !p-0"
+            className={`${compact ? "!h-5 !w-10 !min-w-10 xl:!h-6 xl:!w-12 xl:!min-w-12" : labeled ? "!h-7 !w-auto !min-w-0 !px-1.5 !text-xs xl:!h-8 xl:!px-2 xl:!text-sm" : "!h-7 !w-7 !min-w-7 xl:!h-8 xl:!w-8 xl:!min-w-8"} !p-0 [&_.ant-btn-icon]:!m-0 [&_svg]:size-3.5 xl:[&_svg]:size-4.5`}
             disabled={disabled}
             style={active ? activeStyle : hovered === id && !disabled ? hoverStyle : { color: danger ? "#f87171" : theme.toolbar.item, opacity: disabled ? 0.35 : 1 }}
             icon={children}
@@ -314,7 +344,7 @@ function ToolbarButton({
 }
 
 function Divider({ theme }: { theme: CanvasTheme }) {
-    return <div className="mx-1 h-6 w-px" style={{ background: theme.toolbar.border }} />;
+    return <div className="mx-0.5 h-5 w-px xl:mx-1 xl:h-6" style={{ background: theme.toolbar.border }} />;
 }
 
 function CanvasThemeButton({ colorTheme, targetTheme, onThemeChange, children }: { colorTheme: CanvasColorTheme; targetTheme: CanvasColorTheme; onThemeChange: (theme: CanvasColorTheme) => void; children: ReactNode }) {
