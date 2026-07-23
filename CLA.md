@@ -2,10 +2,14 @@
 
 This Contributor License Agreement ("Agreement") applies to any code,
 documentation, design asset, issue text, pull request, patch, or other
-material ("Contribution") that you submit to the infinite-canvas project
+material ("Contribution") that you submit to the visionary-infinite-canvas project
 ("Project").
 
 By submitting a Contribution, you agree to the terms below.
+
+This Agreement covers only the Contribution submitted to this fork. It does
+not change the ownership or license of code inherited from
+`basketikun/infinite-canvas`, which remains available under GNU AGPL v3.0.
 
 ## 1. Copyright License
 
@@ -87,5 +91,5 @@ or by requiring acceptance through an automated CLA workflow.
 
 ## 8. Contact
 
-For questions about this Agreement, contact the maintainers through the
-repository or email `1844025705@qq.com`.
+For questions about this Agreement, contact the maintainers through
+https://github.com/ursuchcute/visionary-infinite-canvas/issues.

@@ -2,6 +2,7 @@ import { registerNodeDefinitions, unregisterPluginNodes } from "@/lib/canvas/nod
 import { getPluginRuntime } from "@/lib/canvas/plugin-runtime";
 import { usePluginStore, type InstalledPlugin } from "@/stores/canvas/use-plugin-store";
 import type { CanvasPlugin } from "@/types/canvas-plugin";
+import { publicAssetUrl } from "@/constant/env";
 
 const cleanups = new Map<string, () => void>();
 
@@ -119,7 +120,7 @@ export async function ensurePluginsLoaded() {
 async function loadLocalPlugins() {
     let urls: unknown;
     try {
-        const response = await fetch("/plugins/index.json");
+        const response = await fetch(publicAssetUrl("plugins/index.json"));
         if (!response.ok) return;
         urls = await response.json();
     } catch {

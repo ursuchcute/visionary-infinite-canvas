@@ -38,6 +38,7 @@ import { CanvasToolbar } from "@/components/canvas/canvas-toolbar";
 import { AssetPickerModal, type InsertAssetPayload } from "@/components/canvas/asset-picker-modal";
 import { CanvasSidePanel, CanvasSidePanelToggle } from "@/components/canvas/canvas-side-panel";
 import { CanvasZoomControls } from "@/components/canvas/canvas-zoom-controls";
+import { APP_SHORT_NAME } from "@/constant/env";
 import { useAgentStore } from "@/stores/use-agent-store";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useAgentBridge } from "@/pages/canvas/hooks/use-agent-bridge";
@@ -986,7 +987,7 @@ function InfiniteCanvasPage() {
         if (!project) return message.error("未找到当前画布");
         const hide = message.loading("正在导出当前画布…", 0);
         try {
-            await exportCanvasProjects([project], project.title || "无限画布");
+            await exportCanvasProjects([project], project.title || APP_SHORT_NAME);
             message.success("已导出当前画布");
         } catch (error) {
             console.error(error);

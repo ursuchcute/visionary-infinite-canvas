@@ -6,6 +6,7 @@ import { Streamdown } from "streamdown";
 import { isPlainEnterKey } from "@/lib/keyboard-event";
 import { canvasThemes } from "@/lib/canvas-theme";
 import type { LocalUser } from "@/stores/use-user-store";
+import { publicAssetUrl } from "@/constant/env";
 
 export type CanvasAgentChatAttachment = { id: string; name: string; url: string };
 export type CanvasAgentChatMessage = {
@@ -283,7 +284,7 @@ function AgentDetailBlock({ detail, theme }: { detail: unknown; theme: (typeof c
 function AgentAvatar({ theme }: { theme: (typeof canvasThemes)[keyof typeof canvasThemes] }) {
     return (
         <span className="grid size-8 shrink-0 place-items-center" role="img" aria-label="OpenAI">
-            <span className="size-5 opacity-80" style={{ background: theme.node.text, WebkitMask: "url(/icons/openai.svg) center / contain no-repeat", mask: "url(/icons/openai.svg) center / contain no-repeat" }} />
+            <span className="size-5 opacity-80" style={{ background: theme.node.text, WebkitMask: `url(${publicAssetUrl("icons/openai.svg")}) center / contain no-repeat`, mask: `url(${publicAssetUrl("icons/openai.svg")}) center / contain no-repeat` }} />
         </span>
     );
 }

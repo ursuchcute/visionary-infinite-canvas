@@ -1,6 +1,6 @@
 services:
   app:
-    image: infinite-canvas:local
+    image: visionary-infinite-canvas:local
     build:
       context: .
       dockerfile: Dockerfile

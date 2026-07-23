@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: infinite-canvas
+    name: visionary-infinite-canvas
     runtime: docker
     plan: free
     autoDeployTrigger: off

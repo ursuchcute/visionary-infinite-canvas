@@ -1,11 +1,11 @@
 {
-  "name": "infinite-canvas-local",
+  "name": "visionary-infinite-canvas-local",
   "interface": {
-    "displayName": "Infinite Canvas"
+    "displayName": "Visionary Infinite Canvas"
   },
   "plugins": [
     {
-      "name": "infinite-canvas",
+      "name": "visionary-infinite-canvas",
       "source": {
         "source": "local",
         "path": "./plugins/infinite-canvas"

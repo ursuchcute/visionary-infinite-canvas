@@ -9,6 +9,7 @@ import { parseChangelog } from "./src/lib/release";
 const webDir = dirname(fileURLToPath(import.meta.url));
 const localVersion = readFileSync(resolve(webDir, "../VERSION"), "utf8").trim() || "dev";
 const localChangelog = readFileSync(resolve(webDir, "../CHANGELOG.md"), "utf8");
+const publicBase = `${process.env.VITE_BASE || "/"}`.replace(/\/?$/, "/");
 
 // 暴露 /plugins/index.json:列出 public/plugins 下的本地插件文件,
 // 供前端自动发现并加入插件列表(默认关闭)。dev 下实时读目录,构建时产出静态清单。
@@ -19,7 +20,7 @@ function localPluginsManifest(): Plugin {
             return readdirSync(pluginsDir)
                 .filter((file) => file.endsWith(".js"))
                 .sort()
-                .map((file) => `/plugins/${file}`);
+                .map((file) => `${publicBase}plugins/${file}`);
         } catch {
             return [];
         }

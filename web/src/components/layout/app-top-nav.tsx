@@ -7,6 +7,7 @@ import { AppConfigModal } from "@/components/layout/app-config-modal";
 import { MobileNavDrawer } from "@/components/layout/mobile-nav-drawer";
 import { UserStatusActions } from "@/components/layout/user-status-actions";
 import { cn } from "@/lib/utils";
+import { APP_SHORT_NAME, publicAssetUrl } from "@/constant/env";
 import { useEffect, useRef, useState } from "react";
 import { useAgentStore } from "@/stores/use-agent-store";
 
@@ -40,11 +41,11 @@ export function AppTopNav() {
                                 <span
                                     className="size-5 shrink-0 bg-current"
                                     style={{
-                                        mask: "url(/logo.svg) center / contain no-repeat",
-                                        WebkitMask: "url(/logo.svg) center / contain no-repeat",
+                                        mask: `url(${publicAssetUrl("logo.svg")}) center / contain no-repeat`,
+                                        WebkitMask: `url(${publicAssetUrl("logo.svg")}) center / contain no-repeat`,
                                     }}
                                 />
-                                <span className="text-base font-medium">无限画布</span>
+                                <span className="text-base font-medium">{APP_SHORT_NAME}</span>
                             </Link>
 
                             <button
