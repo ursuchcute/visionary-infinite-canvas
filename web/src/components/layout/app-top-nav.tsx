@@ -1,5 +1,5 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { Menu } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { House } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
 import { LazyAppConfigModal } from "@/components/layout/lazy-app-config-modal";
@@ -8,17 +8,8 @@ import { navigationTools, type NavigationToolSlug } from "@/constant/navigation-
 import { cn } from "@/lib/utils";
 import { useAgentStore } from "@/stores/use-agent-store";
 
-const loadMobileNavDrawer = () =>
-    import("@/components/layout/mobile-nav-drawer").then((module) => ({
-        default: module.MobileNavDrawer,
-    }));
-const MobileNavDrawer = lazy(loadMobileNavDrawer);
-const preloadMobileNavDrawer = () => void loadMobileNavDrawer().catch(() => undefined);
-
 export function AppTopNav() {
     const { pathname } = useLocation();
-    const [mobileNavOpen, setMobileNavOpen] = useState(false);
-    const [mobileNavMounted, setMobileNavMounted] = useState(false);
     const autoConnectRef = useRef(false);
     const agentToken = useAgentStore((state) => state.token);
     const agentEnabled = useAgentStore((state) => state.enabled);
@@ -34,35 +25,21 @@ export function AppTopNav() {
         connectAgent({ silent: true });
     }, [agentConnected, agentEnabled, agentToken, connectAgent]);
 
-    const openMobileNav = () => {
-        setMobileNavMounted(true);
-        setMobileNavOpen(true);
-    };
-
     return (
         <>
             {!hideHeader ? (
-                <header className="sticky top-0 z-20 h-14 shrink-0 border-b border-[var(--visionary-border)] bg-[var(--visionary-page)] backdrop-blur-2xl">
-                    <div className="flex h-full w-full items-center justify-between gap-5 px-5 lg:px-7">
-                        <div className="flex min-w-0 items-center">
-                            <Link to="/" className="flex shrink-0 items-center gap-2.5 leading-none text-stone-950 transition-opacity hover:opacity-75 dark:text-white" aria-label="Visionary 首页">
-                                <span className="relative grid size-9 shrink-0 place-items-center rounded-[11px] bg-gradient-to-br from-white via-stone-200 to-stone-400 shadow-[inset_0_1px_0_rgba(255,255,255,.8),0_5px_16px_rgba(0,0,0,.2)]">
-                                    <span className="size-[18px] rotate-45 rounded-[5px] bg-black" />
-                                </span>
-                                <span className="text-[19px] font-bold tracking-[-.055em]">VISIONARY</span>
-                            </Link>
-                            <button
-                                type="button"
-                                className="ml-3 inline-flex size-8 shrink-0 items-center justify-center text-stone-600 transition hover:text-stone-950 lg:hidden dark:text-stone-300 dark:hover:text-white"
-                                onClick={openMobileNav}
-                                onFocus={preloadMobileNavDrawer}
-                                onPointerEnter={preloadMobileNavDrawer}
-                                aria-label="打开导航菜单"
-                                title="导航菜单"
-                            >
-                                <Menu className="size-5" />
-                            </button>
-                            <nav className="hide-scrollbar ml-8 hidden h-14 min-w-0 items-center gap-7 overflow-x-auto lg:flex">
+                <header className="h-14 shrink-0">
+                    <div className="flex h-full w-full items-center justify-between gap-3 px-5 lg:px-7">
+                        <Link
+                            to="/"
+                            className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-stone-600 transition hover:bg-black/5 hover:text-stone-950 dark:text-stone-300 dark:hover:bg-white/10 dark:hover:text-white"
+                            aria-label="主页"
+                            title="主页"
+                        >
+                            <House className="size-4" />
+                        </Link>
+                        <div className="flex h-9 min-w-0 items-center justify-end gap-1 whitespace-nowrap">
+                            <div className="inline-flex shrink-0 items-center gap-1" aria-label="主要页面">
                                 {navigationTools.map((tool) => {
                                     const Icon = tool.icon;
                                     const active = tool.slug === activeToolSlug;
@@ -71,36 +48,25 @@ export function AppTopNav() {
                                             key={tool.slug}
                                             to={`/${tool.slug}`}
                                             className={cn(
-                                                "relative flex h-14 shrink-0 items-center gap-2 text-sm leading-6 transition after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full",
-                                                active ? "font-medium text-stone-950 after:bg-blue-500 dark:text-white" : "text-stone-500 after:bg-transparent hover:text-stone-950 dark:text-stone-400 dark:hover:text-stone-100",
+                                                "inline-flex h-8 shrink-0 items-center justify-center gap-2 rounded-lg px-2 text-sm font-medium transition sm:px-2.5",
+                                                active
+                                                    ? "bg-[var(--visionary-surface-hover)] text-stone-950 dark:text-stone-100"
+                                                    : "text-stone-500 hover:bg-black/5 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-white/10 dark:hover:text-stone-100",
                                             )}
+                                            aria-current={active ? "page" : undefined}
+                                            aria-label={tool.label}
+                                            title={tool.label}
                                         >
                                             <Icon className="size-4" />
-                                            <span>{tool.label}</span>
+                                            <span className="hidden sm:inline">{tool.label}</span>
                                         </Link>
                                     );
                                 })}
-                            </nav>
-                        </div>
-                        <div className="flex h-9 min-w-0 items-center justify-end whitespace-nowrap">
+                            </div>
                             <UserStatusActions />
                         </div>
                     </div>
                 </header>
-            ) : null}
-
-            {mobileNavMounted ? (
-                <Suspense
-                    fallback={
-                        mobileNavOpen ? (
-                            <div className="fixed inset-y-0 left-0 z-[1000] grid w-[280px] place-items-center border-r border-[var(--visionary-border)] bg-[var(--visionary-surface-solid)] text-sm shadow-xl" role="status" aria-live="polite">
-                                正在加载导航…
-                            </div>
-                        ) : null
-                    }
-                >
-                    <MobileNavDrawer open={mobileNavOpen} activeToolSlug={activeToolSlug} onClose={() => setMobileNavOpen(false)} />
-                </Suspense>
             ) : null}
             <LazyAppConfigModal />
         </>
