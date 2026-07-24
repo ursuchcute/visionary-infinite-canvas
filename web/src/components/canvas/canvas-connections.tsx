@@ -2,6 +2,7 @@ import { memo } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
+import { getConnectionGeometry } from "@/lib/canvas/canvas-connection-geometry";
 import { useCanvasInteractionStore } from "@/stores/canvas/use-canvas-interaction-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { CanvasConnection, CanvasNodeData, ConnectionHandle, Position } from "@/types/canvas";
@@ -29,13 +30,7 @@ export const ConnectionPath = memo(function ConnectionPath({
     const fromWidth = fromPreview?.width ?? from.width;
     const fromHeight = fromPreview?.height ?? from.height;
     const toHeight = toPreview?.height ?? to.height;
-    const startX = fromPosition.x + fromWidth;
-    const startY = fromPosition.y + fromHeight / 2;
-    const endX = toPosition.x;
-    const endY = toPosition.y + toHeight / 2;
-    const dx = Math.abs(endX - startX);
-    const curvature = Math.max(dx * 0.5, 50);
-    const pathD = `M ${startX} ${startY} C ${startX + curvature} ${startY}, ${endX - curvature} ${endY}, ${endX} ${endY}`;
+    const { pathD } = getConnectionGeometry({ position: fromPosition, width: fromWidth, height: fromHeight }, { position: toPosition, width: to.width, height: toHeight });
 
     return (
         <g>

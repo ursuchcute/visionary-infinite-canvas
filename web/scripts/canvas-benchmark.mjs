@@ -206,6 +206,57 @@ async function runCase(browser, nodeCount) {
             persisted: Boolean(persisted && Math.abs(persisted.x - x) < 0.02 && Math.abs(persisted.y - y) < 0.02 && Math.abs(persisted.k - k) < 0.001),
         };
     }, projectId);
+    const dragTarget = await page.evaluate(async (id) => {
+        const { useCanvasStore } = await import("/src/stores/canvas/use-canvas-store.ts");
+        const renderedNodeIds = [...document.querySelectorAll("[data-node-id]")].map((element) => element.getAttribute("data-node-id"));
+        const renderedConnectionIds = new Set([...document.querySelectorAll("[data-connection-id]")].map((element) => element.getAttribute("data-connection-id")));
+        const connection = useCanvasStore
+            .getState()
+            .openProject(id)
+            ?.connections.find((item) => renderedConnectionIds.has(item.id) && renderedNodeIds.includes(item.fromNodeId));
+        return connection ? { connectionId: connection.id, nodeIndex: renderedNodeIds.indexOf(connection.fromNodeId) } : null;
+    }, projectId);
+    if (!dragTarget) throw new Error("找不到可用于拖拽回归的可见连线");
+    const dragConnection = page.locator(`[data-connection-id="${dragTarget.connectionId}"]`);
+    const connectionPathBeforeDrag = await dragConnection.getAttribute("d");
+    const dragNode = page.locator("[data-node-id]").nth(dragTarget.nodeIndex);
+    const dragNodeBox = await dragNode.boundingBox();
+    if (!dragNodeBox) throw new Error("无法读取拖拽节点尺寸");
+    const dragStartX = dragNodeBox.x + dragNodeBox.width / 2;
+    const dragStartY = dragNodeBox.y + 5;
+    await dragNode.evaluate(
+        (element, point) => {
+            const dragSurface = [...element.children].find((child) => child instanceof HTMLElement && child.classList.contains("h-full")) || element.firstElementChild;
+            return dragSurface?.dispatchEvent(new MouseEvent("mousedown", { button: 0, clientX: point.x, clientY: point.y, bubbles: true, cancelable: true })) ?? false;
+        },
+        { x: dragStartX, y: dragStartY },
+    );
+    await page.evaluate(
+        (point) => {
+            window.dispatchEvent(new MouseEvent("mousemove", { button: 0, buttons: 1, clientX: point.x + 80, clientY: point.y + 30, bubbles: true, cancelable: true }));
+            window.dispatchEvent(new MouseEvent("mouseup", { button: 0, clientX: point.x + 80, clientY: point.y + 30, bubbles: true, cancelable: true }));
+        },
+        { x: dragStartX, y: dragStartY },
+    );
+    await page.waitForTimeout(100);
+    const connectionFollowsDrag = (await dragConnection.getAttribute("d")) !== connectionPathBeforeDrag;
+
+    const firstConnection = page.locator("[data-connection-id]").first();
+    await firstConnection.evaluate((element) => element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true })));
+    await page.waitForTimeout(50);
+    const connectionSelectable = await firstConnection.evaluate((element) => element.nextElementSibling?.getAttribute("stroke-width") === "3");
+    await firstConnection.evaluate((element) =>
+        element.dispatchEvent(
+            new MouseEvent("contextmenu", {
+                clientX: 640,
+                clientY: 420,
+                button: 2,
+                bubbles: true,
+                cancelable: true,
+            }),
+        ),
+    );
+    const connectionContextMenu = await page.getByRole("button", { name: "删除", exact: true }).isVisible();
 
     const frameIntervals = raw.frameTimes.slice(1).map((time, index) => time - raw.frameTimes[index]);
     const result = {
@@ -224,6 +275,9 @@ async function runCase(browser, nodeCount) {
         maxLongTaskMs: Number(Math.max(0, ...raw.longTasks).toFixed(2)),
         zoomChanged: viewportPersistence.serialized !== viewportBeforeZoom,
         viewportPersisted: viewportPersistence.persisted,
+        connectionFollowsDrag,
+        connectionSelectable,
+        connectionContextMenu,
         pageErrors,
     };
 
@@ -267,7 +321,18 @@ try {
     );
     console.log(JSON.stringify({ nodeCounts: BENCHMARK_NODE_COUNTS, results }, null, 2));
 
-    const failed = results.filter((result) => result.pageErrors.length || result.viewportUpdates < 10 || result.projectCommits >= result.viewportUpdates || !result.zoomChanged || !result.viewportPersisted);
+    const failed = results.filter(
+        (result) =>
+            result.pageErrors.length ||
+            result.viewportUpdates < 10 ||
+            result.projectCommits >= result.viewportUpdates ||
+            !result.zoomChanged ||
+            !result.viewportPersisted ||
+            !result.connectionFollowsDrag ||
+            !result.connectionSelectable ||
+            !result.connectionContextMenu ||
+            result.renderedConnections >= result.connections,
+    );
     if (failed.length) {
         throw new Error(`视口隔离基准未通过：${failed.map((result) => `${result.nodes} 节点`).join("、")}`);
     }

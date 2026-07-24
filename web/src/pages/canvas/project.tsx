@@ -19,7 +19,7 @@ import { cropDataUrl, splitDataUrl, upscaleDataUrl } from "@/lib/canvas/canvas-i
 import { fitNodeSize, nodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
 import { App, Button, Modal } from "antd";
 import { NODE_DEFAULT_SIZE, getNodeSpec } from "@/constant/canvas";
-import { ActiveConnectionPath, ConnectionPath } from "@/components/canvas/canvas-connections";
+import { CanvasConnectionLayer } from "@/components/canvas/canvas-connection-layer";
 import { CanvasConfigComposer } from "@/components/canvas/canvas-config-composer";
 import { CanvasConfigNodePanel } from "@/components/canvas/canvas-config-node-panel";
 import { CanvasNodeContextMenu } from "@/components/canvas/canvas-context-menu";
@@ -2814,32 +2814,21 @@ function InfiniteCanvasPage() {
                     onContextMenu={preventCanvasContextMenu}
                     onDrop={handleDrop}
                 >
-                    <svg className="absolute left-0 top-0 h-[10000px] w-[10000px] overflow-visible" style={{ pointerEvents: "none", transform: "translateZ(0)", zIndex: 0 }}>
-                        {connections
-                            .filter((connection) => {
-                                const from = nodeById.get(connection.fromNodeId);
-                                const to = nodeById.get(connection.toNodeId);
-                                return Boolean(from && to && !graph.hiddenBatchNodeIds.has(from.id) && !graph.hiddenBatchNodeIds.has(to.id));
-                            })
-                            .map((connection) => {
-                                const from = nodeById.get(connection.fromNodeId);
-                                const to = nodeById.get(connection.toNodeId);
-                                if (!from || !to) return null;
-
-                                return (
-                                    <ConnectionPath
-                                        key={connection.id}
-                                        connection={connection}
-                                        from={from}
-                                        to={to}
-                                        active={selectedConnectionId === connection.id || relatedHighlight.connectionIds.has(connection.id)}
-                                        onSelect={handleConnectionSelect}
-                                        onContextMenu={handleConnectionContextMenu}
-                                    />
-                                );
-                            })}
-                        {connectingParams ? <ActiveConnectionPath node={nodeById.get(connectingParams.nodeId)} handle={connectingParams} mouseWorld={mouseWorld} target={connectionTargetNodeId ? nodeById.get(connectionTargetNodeId) : undefined} /> : null}
-                    </svg>
+                    <CanvasConnectionLayer
+                        connections={connections}
+                        nodeById={nodeById}
+                        hiddenNodeIds={graph.hiddenBatchNodeIds}
+                        selectedNodeIds={selectedNodeIds}
+                        selectedConnectionId={selectedConnectionId}
+                        activeConnectionIds={relatedHighlight.connectionIds}
+                        viewport={cullingViewport}
+                        viewportSize={size}
+                        connectingParams={connectingParams}
+                        mouseWorld={mouseWorld}
+                        connectionTargetNodeId={connectionTargetNodeId}
+                        onSelect={handleConnectionSelect}
+                        onContextMenu={handleConnectionContextMenu}
+                    />
 
                     {visibleNodes.map((node) => (
                         <CanvasNode
