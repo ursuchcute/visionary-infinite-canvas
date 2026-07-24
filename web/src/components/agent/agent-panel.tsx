@@ -1,14 +1,18 @@
-import { useState, type PointerEvent as ReactPointerEvent } from "react";
+import { lazy, Suspense, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Bot, PanelRightClose } from "lucide-react";
 import { Button, Switch, Tooltip } from "antd";
 import { motion } from "motion/react";
 
-import { CanvasLocalAgentPanel } from "@/components/canvas/canvas-local-agent-panel";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { CANVAS_AGENT_PANEL_MOTION_MS, useAgentStore } from "@/stores/use-agent-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 
 const PANEL_MOTION_SECONDS = CANVAS_AGENT_PANEL_MOTION_MS / 1000;
+const CanvasLocalAgentPanel = lazy(() =>
+    import("@/components/canvas/canvas-local-agent-panel").then((module) => ({
+        default: module.CanvasLocalAgentPanel,
+    })),
+);
 
 export function AgentPanel() {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
@@ -17,10 +21,10 @@ export function AgentPanel() {
     const panelMounted = useAgentStore((state) => state.panelMounted);
     const panelOpen = useAgentStore((state) => state.panelOpen);
     const panelClosing = useAgentStore((state) => state.panelClosing);
+    const enabled = useAgentStore((state) => state.enabled);
     const confirmTools = useAgentStore((state) => state.confirmTools);
     const setAgentState = useAgentStore((state) => state.setAgentState);
     const closePanel = useAgentStore((state) => state.closePanel);
-
 
     const startResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
         event.preventDefault();
@@ -42,15 +46,15 @@ export function AgentPanel() {
         window.addEventListener("pointerup", onUp);
     };
 
-    if (!panelMounted) return null;
+    if (!panelMounted && !enabled) return null;
 
     return (
         <motion.div
             className="relative z-[70] flex h-full shrink-0"
             initial={{ width: 0, opacity: 0 }}
-            animate={{ width: panelOpen ? width + 1 : 0, opacity: panelOpen ? 1 : 0 }}
+            animate={{ width: panelMounted && panelOpen ? width + 1 : 0, opacity: panelMounted && panelOpen ? 1 : 0 }}
             transition={{ duration: resizing ? 0 : PANEL_MOTION_SECONDS, ease: [0.22, 1, 0.36, 1] }}
-            style={{ overflow: "clip", pointerEvents: panelClosing ? "none" : undefined }}
+            style={{ overflow: "clip", pointerEvents: panelClosing || !panelMounted ? "none" : undefined }}
         >
             <motion.aside
                 className="relative flex h-full shrink-0 flex-col border-l backdrop-blur-2xl"
@@ -67,7 +71,9 @@ export function AgentPanel() {
                         </span>
                         <div className="min-w-0">
                             <div className="text-base font-semibold leading-5">Agent</div>
-                            <div className="truncate text-xs" style={{ color: theme.node.muted }}>全站助手</div>
+                            <div className="truncate text-xs" style={{ color: theme.node.muted }}>
+                                全站助手
+                            </div>
                         </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
@@ -80,7 +86,17 @@ export function AgentPanel() {
                         </Tooltip>
                     </div>
                 </header>
-                <CanvasLocalAgentPanel embedded />
+                <Suspense
+                    fallback={
+                        panelMounted ? (
+                            <div className="grid min-h-0 flex-1 place-items-center text-sm" style={{ color: theme.node.muted }}>
+                                正在加载 Agent…
+                            </div>
+                        ) : null
+                    }
+                >
+                    <CanvasLocalAgentPanel embedded={panelMounted} headless={!panelMounted} />
+                </Suspense>
             </motion.aside>
         </motion.div>
     );

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Menu } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
-import { AppConfigModal } from "@/components/layout/app-config-modal";
+import { LazyAppConfigModal } from "@/components/layout/lazy-app-config-modal";
 import { MobileNavDrawer } from "@/components/layout/mobile-nav-drawer";
 import { UserStatusActions } from "@/components/layout/user-status-actions";
 import { navigationTools, type NavigationToolSlug } from "@/constant/navigation-tools";
@@ -39,7 +39,13 @@ export function AppTopNav() {
                                 </span>
                                 <span className="text-[19px] font-bold tracking-[-.055em]">VISIONARY</span>
                             </Link>
-                            <button type="button" className="ml-3 inline-flex size-8 shrink-0 items-center justify-center text-stone-600 transition hover:text-stone-950 lg:hidden dark:text-stone-300 dark:hover:text-white" onClick={() => setMobileNavOpen(true)} aria-label="打开导航菜单" title="导航菜单">
+                            <button
+                                type="button"
+                                className="ml-3 inline-flex size-8 shrink-0 items-center justify-center text-stone-600 transition hover:text-stone-950 lg:hidden dark:text-stone-300 dark:hover:text-white"
+                                onClick={() => setMobileNavOpen(true)}
+                                aria-label="打开导航菜单"
+                                title="导航菜单"
+                            >
                                 <Menu className="size-5" />
                             </button>
                             <nav className="hide-scrollbar ml-8 hidden h-14 min-w-0 items-center gap-7 overflow-x-auto lg:flex">
@@ -70,7 +76,7 @@ export function AppTopNav() {
             ) : null}
 
             <MobileNavDrawer open={mobileNavOpen} activeToolSlug={activeToolSlug} onClose={() => setMobileNavOpen(false)} />
-            <AppConfigModal />
+            <LazyAppConfigModal />
         </>
     );
 }

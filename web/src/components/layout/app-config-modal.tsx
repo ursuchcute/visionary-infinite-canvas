@@ -1,14 +1,30 @@
 import { App, Button, Form, Input, Modal, Progress, Select, Tabs } from "antd";
 import { Cloud, Pencil, Plus, RefreshCw, Trash2, Wifi } from "lucide-react";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 
 import { ModelPicker } from "@/components/model-picker";
-import { ChannelEditorDrawer } from "@/components/layout/channel-editor-drawer";
 import { ConfigPromptSources } from "@/components/layout/config-prompt-sources";
 import { syncAppDataToWebdav, type AppSyncDomainKey, type AppSyncProgressEvent } from "@/services/app-sync";
 import { testWebdavConnection, WEBDAV_MANIFEST_FILE_NAME } from "@/services/webdav-sync";
 import { audioFormatOptions, audioVoiceOptions, normalizeAudioSpeedValue } from "@/lib/audio-generation";
-import { createModelChannel, modelOptionsFromChannels, normalizeModelOptionValue, selectableModelsByCapability, useConfigStore, type AiConfig, type ApiCallFormat, type ConfigTabKey, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
+import {
+    createModelChannel,
+    modelOptionsFromChannels,
+    normalizeModelOptionValue,
+    selectableModelsByCapability,
+    useConfigStore,
+    type AiConfig,
+    type ApiCallFormat,
+    type ConfigTabKey,
+    type ModelCapability,
+    type ModelChannel,
+} from "@/stores/use-config-store";
+
+const ChannelEditorDrawer = lazy(() =>
+    import("@/components/layout/channel-editor-drawer").then((module) => ({
+        default: module.ChannelEditorDrawer,
+    })),
+);
 
 type ModelGroup = {
     capability: ModelCapability;
@@ -300,7 +316,11 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                     </Button>
                 </div>
             ) : null}
-            <ChannelEditorDrawer open={Boolean(editingChannel)} channel={editingChannel} onSave={saveChannel} onClose={() => setEditingChannelId("")} />
+            {editingChannel ? (
+                <Suspense fallback={<div className="py-3 text-center text-sm text-stone-500">正在加载渠道编辑器…</div>}>
+                    <ChannelEditorDrawer open channel={editingChannel} onSave={saveChannel} onClose={() => setEditingChannelId("")} />
+                </Suspense>
+            ) : null}
         </>
     );
 }

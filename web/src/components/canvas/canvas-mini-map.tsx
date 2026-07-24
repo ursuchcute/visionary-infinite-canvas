@@ -3,12 +3,14 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { useThemeStore } from "@/stores/use-theme-store";
+import { useCanvasInteractionStore } from "@/stores/canvas/use-canvas-interaction-store";
 import { type CanvasNodeData, type ViewportTransform } from "@/types/canvas";
 
 export function Minimap({ nodes, viewport, viewportSize, onViewportChange }: { nodes: CanvasNodeData[]; viewport: ViewportTransform; viewportSize: { width: number; height: number }; onViewportChange: (viewport: ViewportTransform) => void }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const containerRef = useRef<HTMLDivElement>(null);
     const [isDragging, setIsDragging] = useState(false);
+    const nodePreviews = useCanvasInteractionStore((state) => state.nodePreviews);
     const width = 240;
     const height = 160;
 
@@ -23,10 +25,14 @@ export function Minimap({ nodes, viewport, viewportSize, onViewportChange }: { n
         let maxY = -Infinity;
 
         nodes.forEach((node) => {
-            minX = Math.min(minX, node.position.x);
-            minY = Math.min(minY, node.position.y);
-            maxX = Math.max(maxX, node.position.x + node.width);
-            maxY = Math.max(maxY, node.position.y + node.height);
+            const preview = nodePreviews.get(node.id);
+            const position = preview?.position || node.position;
+            const nodeWidth = preview?.width ?? node.width;
+            const nodeHeight = preview?.height ?? node.height;
+            minX = Math.min(minX, position.x);
+            minY = Math.min(minY, position.y);
+            maxX = Math.max(maxX, position.x + nodeWidth);
+            maxY = Math.max(maxY, position.y + nodeHeight);
         });
 
         minX -= 500;
@@ -45,7 +51,7 @@ export function Minimap({ nodes, viewport, viewportSize, onViewportChange }: { n
             scale: nextScale,
             offset: { x: (width - mapContentW) / 2, y: (height - mapContentH) / 2 },
         };
-    }, [nodes]);
+    }, [nodePreviews, nodes]);
 
     const toMinimap = useCallback(
         (worldX: number, worldY: number) => {
@@ -113,7 +119,11 @@ export function Minimap({ nodes, viewport, viewportSize, onViewportChange }: { n
                 onPointerLeave={() => setIsDragging(false)}
             >
                 {nodes.map((node) => {
-                    const pos = toMinimap(node.position.x, node.position.y);
+                    const preview = nodePreviews.get(node.id);
+                    const position = preview?.position || node.position;
+                    const nodeWidth = preview?.width ?? node.width;
+                    const nodeHeight = preview?.height ?? node.height;
+                    const pos = toMinimap(position.x, position.y);
                     const color = getNodeDefinition(node.type)?.minimapColor || theme.node.muted;
                     return (
                         <div
@@ -122,8 +132,8 @@ export function Minimap({ nodes, viewport, viewportSize, onViewportChange }: { n
                             style={{
                                 left: pos.x,
                                 top: pos.y,
-                                width: Math.max(node.width * scale, 2),
-                                height: Math.max(node.height * scale, 2),
+                                width: Math.max(nodeWidth * scale, 2),
+                                height: Math.max(nodeHeight * scale, 2),
                                 backgroundColor: color,
                                 opacity: 0.8,
                             }}

@@ -7,6 +7,7 @@ import { formatBytes } from "@/lib/image-utils";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { buildNodeContext } from "@/lib/canvas/plugin-node-context";
 import { useThemeStore } from "@/stores/use-theme-store";
+import { useCanvasInteractionStore } from "@/stores/canvas/use-canvas-interaction-store";
 import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textarea";
 import { CanvasNodeType, type CanvasNodeData, type Position } from "@/types/canvas";
 import type { CanvasNodeContext, CanvasPluginHost } from "@/types/canvas-plugin";
@@ -135,6 +136,10 @@ export const CanvasNode = React.memo(function CanvasNode({
     const imageBorderColor = isActive ? selectionBlue : isRelated && !isBatchChild ? theme.node.muted : "transparent";
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const titleInputRef = useRef<HTMLInputElement>(null);
+    const preview = useCanvasInteractionStore((state) => state.nodePreviews.get(data.id));
+    const renderedPosition = preview?.position || data.position;
+    const renderedWidth = preview?.width ?? data.width;
+    const renderedHeight = preview?.height ?? data.height;
     const resizeRef = useRef({
         isResizing: false,
         corner: "bottom-right" as ResizeCorner,
@@ -245,19 +250,30 @@ export const CanvasNode = React.memo(function CanvasNode({
                 }
             }
 
-            onResize(data.id, width, height, {
-                x: fromLeft ? startRight - width : resizeRef.current.startLeft,
-                y: fromTop ? startBottom - height : resizeRef.current.startTop,
+            useCanvasInteractionStore.getState().setNodePreview(data.id, {
+                position: {
+                    x: fromLeft ? startRight - width : resizeRef.current.startLeft,
+                    y: fromTop ? startBottom - height : resizeRef.current.startTop,
+                },
+                width,
+                height,
             });
         },
-        [data.id, onResize, scale],
+        [data.id, scale],
     );
 
     const handleResizeUp = useCallback(() => {
         resizeRef.current.isResizing = false;
         window.removeEventListener("mousemove", handleResizeMove);
         window.removeEventListener("mouseup", handleResizeUp);
-    }, [handleResizeMove]);
+        const currentPreview = useCanvasInteractionStore.getState().nodePreviews.get(data.id);
+        if (!currentPreview) return;
+        onResize(data.id, currentPreview.width, currentPreview.height, currentPreview.position);
+        requestAnimationFrame(() => {
+            const store = useCanvasInteractionStore.getState();
+            if (store.nodePreviews.get(data.id) === currentPreview) store.clearNodePreviews([data.id]);
+        });
+    }, [data.id, handleResizeMove, onResize]);
 
     const handleResizeMouseDown = (event: React.MouseEvent, corner: ResizeCorner) => {
         event.stopPropagation();
@@ -282,17 +298,18 @@ export const CanvasNode = React.memo(function CanvasNode({
         return () => {
             window.removeEventListener("mousemove", handleResizeMove);
             window.removeEventListener("mouseup", handleResizeUp);
+            useCanvasInteractionStore.getState().clearNodePreviews([data.id]);
         };
-    }, [handleResizeMove, handleResizeUp]);
+    }, [data.id, handleResizeMove, handleResizeUp]);
 
     return (
         <div
             data-node-id={data.id}
             className={`node-element absolute flex select-none flex-col transition-shadow duration-200 ${isGroup ? "z-[5]" : isSelected ? "z-50" : "z-10"}`}
             style={{
-                transform: `translate(${data.position.x}px, ${data.position.y}px)`,
-                width: data.width,
-                height: data.height,
+                transform: `translate(${renderedPosition.x}px, ${renderedPosition.y}px)`,
+                width: renderedWidth,
+                height: renderedHeight,
                 transition: "box-shadow 200ms ease",
                 contain: "layout style",
             }}
@@ -348,9 +365,31 @@ export const CanvasNode = React.memo(function CanvasNode({
                 className="relative h-full w-full overflow-visible rounded-3xl border-2"
                 style={{
                     background: isGroup ? `${theme.toolbar.panel}66` : hasImageContent || hasVideoContent || transparentBg ? "transparent" : theme.node.fill,
-                    borderColor: isGroup ? (isGroupDropTarget || isActive ? selectionBlue : theme.node.stroke) : hasImageContent ? imageBorderColor : data.type === CanvasNodeType.Text ? (isActive || isRelated ? theme.node.muted : theme.node.stroke) : isActive ? selectionBlue : isRelated ? theme.node.muted : transparentBg ? "transparent" : theme.node.stroke,
+                    borderColor: isGroup
+                        ? isGroupDropTarget || isActive
+                            ? selectionBlue
+                            : theme.node.stroke
+                        : hasImageContent
+                          ? imageBorderColor
+                          : data.type === CanvasNodeType.Text
+                            ? isActive || isRelated
+                                ? theme.node.muted
+                                : theme.node.stroke
+                            : isActive
+                              ? selectionBlue
+                              : isRelated
+                                ? theme.node.muted
+                                : transparentBg
+                                  ? "transparent"
+                                  : theme.node.stroke,
                     borderStyle: isGroup ? "dashed" : "solid",
-                    boxShadow: isGroupDropTarget ? `0 0 0 2px ${selectionBlue}66, inset 0 0 0 999px ${selectionBlue}10` : isActive ? `0 0 0 1px ${data.type === CanvasNodeType.Text ? theme.node.muted : selectionBlue}55` : isRelated && !isBatchChild ? `0 0 0 1px ${theme.node.muted}55, 0 18px 48px rgba(0,0,0,.14)` : undefined,
+                    boxShadow: isGroupDropTarget
+                        ? `0 0 0 2px ${selectionBlue}66, inset 0 0 0 999px ${selectionBlue}10`
+                        : isActive
+                          ? `0 0 0 1px ${data.type === CanvasNodeType.Text ? theme.node.muted : selectionBlue}55`
+                          : isRelated && !isBatchChild
+                            ? `0 0 0 1px ${theme.node.muted}55, 0 18px 48px rgba(0,0,0,.14)`
+                            : undefined,
                 }}
                 onMouseDown={(event) => onMouseDown(event, data.id)}
                 onDoubleClick={(event) => {
@@ -412,7 +451,9 @@ export const CanvasNode = React.memo(function CanvasNode({
 
                 {showImageInfo && hasImageContent ? <ImageInfoBar node={data} /> : null}
 
-                {!isGroup && !hasImageContent && !hasVideoContent && !hasAudioContent ? <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12" style={{ background: `linear-gradient(to top, ${theme.canvas.background}66, transparent)` }} /> : null}
+                {!isGroup && !hasImageContent && !hasVideoContent && !hasAudioContent ? (
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12" style={{ background: `linear-gradient(to top, ${theme.canvas.background}66, transparent)` }} />
+                ) : null}
 
                 <ResizeHandle corner="top-left" onMouseDown={handleResizeMouseDown} />
                 <ResizeHandle corner="top-right" onMouseDown={handleResizeMouseDown} />
@@ -421,7 +462,14 @@ export const CanvasNode = React.memo(function CanvasNode({
             </div>
 
             {!isGroup ? <ConnectionHandleDot side="left" scale={scale} visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "target")} /> : null}
-            {!isGroup ? <ConnectionHandleDot side="right" scale={scale} visible={(definition?.hasSourceHandle ?? true) && data.type !== CanvasNodeType.Config && (hovered || isSelected || isConnecting)} onMouseDown={(event) => onConnectStart(event, data.id, "source")} /> : null}
+            {!isGroup ? (
+                <ConnectionHandleDot
+                    side="right"
+                    scale={scale}
+                    visible={(definition?.hasSourceHandle ?? true) && data.type !== CanvasNodeType.Config && (hovered || isSelected || isConnecting)}
+                    onMouseDown={(event) => onConnectStart(event, data.id, "source")}
+                />
+            ) : null}
         </div>
     );
 });
@@ -544,11 +592,7 @@ function TextContent({ node, theme, isEditingContent, textareaRef, mentionRefere
                     onWheel={(event) => event.stopPropagation()}
                 />
             ) : (
-                <div
-                    className="thin-scrollbar block h-full w-full overflow-y-auto whitespace-pre-wrap break-words bg-transparent p-5"
-                    style={textStyle}
-                    onWheel={(event) => event.stopPropagation()}
-                >
+                <div className="thin-scrollbar block h-full w-full overflow-y-auto whitespace-pre-wrap break-words bg-transparent p-5" style={textStyle} onWheel={(event) => event.stopPropagation()}>
                     {node.metadata?.content || <span style={{ color: theme.node.placeholder, fontWeight: 400 }}>双击开始编辑...</span>}
                 </div>
             )}

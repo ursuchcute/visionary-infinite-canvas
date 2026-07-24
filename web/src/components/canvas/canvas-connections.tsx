@@ -1,10 +1,12 @@
+import { memo } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
+import { useCanvasInteractionStore } from "@/stores/canvas/use-canvas-interaction-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { CanvasConnection, CanvasNodeData, ConnectionHandle, Position } from "@/types/canvas";
 
-export function ConnectionPath({
+export const ConnectionPath = memo(function ConnectionPath({
     connection,
     from,
     to,
@@ -16,14 +18,21 @@ export function ConnectionPath({
     from: CanvasNodeData;
     to: CanvasNodeData;
     active: boolean;
-    onSelect: () => void;
-    onContextMenu?: (event: ReactMouseEvent<SVGPathElement>) => void;
+    onSelect: (connectionId: string) => void;
+    onContextMenu?: (event: ReactMouseEvent<SVGPathElement>, connectionId: string) => void;
 }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
-    const startX = from.position.x + from.width;
-    const startY = from.position.y + from.height / 2;
-    const endX = to.position.x;
-    const endY = to.position.y + to.height / 2;
+    const fromPreview = useCanvasInteractionStore((state) => state.nodePreviews.get(from.id));
+    const toPreview = useCanvasInteractionStore((state) => state.nodePreviews.get(to.id));
+    const fromPosition = fromPreview?.position || from.position;
+    const toPosition = toPreview?.position || to.position;
+    const fromWidth = fromPreview?.width ?? from.width;
+    const fromHeight = fromPreview?.height ?? from.height;
+    const toHeight = toPreview?.height ?? to.height;
+    const startX = fromPosition.x + fromWidth;
+    const startY = fromPosition.y + fromHeight / 2;
+    const endX = toPosition.x;
+    const endY = toPosition.y + toHeight / 2;
     const dx = Math.abs(endX - startX);
     const curvature = Math.max(dx * 0.5, 50);
     const pathD = `M ${startX} ${startY} C ${startX + curvature} ${startY}, ${endX - curvature} ${endY}, ${endX} ${endY}`;
@@ -39,12 +48,12 @@ export function ConnectionPath({
                 style={{ cursor: "pointer", pointerEvents: "stroke" }}
                 onClick={(event) => {
                     event.stopPropagation();
-                    onSelect();
+                    onSelect(connection.id);
                 }}
                 onContextMenu={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
-                    onContextMenu?.(event);
+                    onContextMenu?.(event, connection.id);
                 }}
             />
             <path
@@ -57,7 +66,7 @@ export function ConnectionPath({
             />
         </g>
     );
-}
+});
 
 export function ActiveConnectionPath({ node, handle, mouseWorld, target }: { node?: CanvasNodeData; handle: ConnectionHandle; mouseWorld: Position; target?: CanvasNodeData }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];

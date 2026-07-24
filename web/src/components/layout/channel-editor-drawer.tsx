@@ -1,10 +1,19 @@
 import { Button, Drawer, Input, Segmented, Select, Space } from "antd";
 import { ListPlus, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 
 import { defaultBaseUrlForApiFormat, guessCapability, normalizeChannelModels, type ApiCallFormat, type ChannelModel, type ModelCapability, type ModelChannel } from "@/stores/use-config-store";
-import { ModelScriptEditor } from "./model-script-editor";
-import { ModelSelectModal } from "./model-select-modal";
+
+const ModelScriptEditor = lazy(() =>
+    import("./model-script-editor").then((module) => ({
+        default: module.ModelScriptEditor,
+    })),
+);
+const ModelSelectModal = lazy(() =>
+    import("./model-select-modal").then((module) => ({
+        default: module.ModelSelectModal,
+    })),
+);
 
 const apiFormatOptions: Array<{ label: string; value: ApiCallFormat }> = [
     { label: "OpenAI", value: "openai" },
@@ -119,16 +128,17 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
                 )}
             </div>
 
-            <ModelSelectModal open={selectOpen} channel={draft} selectedNames={draft.models.map((model) => model.name)} onConfirm={applySelection} onClose={() => setSelectOpen(false)} />
+            {selectOpen ? (
+                <Suspense fallback={<div className="py-3 text-center text-sm text-stone-500">正在加载模型选择器…</div>}>
+                    <ModelSelectModal open channel={draft} selectedNames={draft.models.map((model) => model.name)} onConfirm={applySelection} onClose={() => setSelectOpen(false)} />
+                </Suspense>
+            ) : null}
 
-            <ModelScriptEditor
-                open={Boolean(scriptTarget)}
-                capability={scriptTarget?.capability || "text"}
-                modelName={scriptTarget?.name || ""}
-                value={scriptTarget?.value || ""}
-                onSave={(script) => scriptTarget && setScript(scriptTarget.name, script)}
-                onClose={() => setScriptTarget(null)}
-            />
+            {scriptTarget ? (
+                <Suspense fallback={<div className="py-3 text-center text-sm text-stone-500">正在加载脚本编辑器…</div>}>
+                    <ModelScriptEditor open capability={scriptTarget.capability} modelName={scriptTarget.name} value={scriptTarget.value} onSave={(script) => setScript(scriptTarget.name, script)} onClose={() => setScriptTarget(null)} />
+                </Suspense>
+            ) : null}
         </Drawer>
     );
 }

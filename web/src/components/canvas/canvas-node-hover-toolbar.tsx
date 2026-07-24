@@ -6,6 +6,7 @@ import { canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes, getDataUrlByteSize } from "@/lib/image-utils";
 import { useCopyText } from "@/hooks/use-copy-text";
 import { useThemeStore } from "@/stores/use-theme-store";
+import { useCanvasInteractionStore } from "@/stores/canvas/use-canvas-interaction-store";
 import { CanvasNodeType, type CanvasNodeData, type ViewportTransform } from "@/types/canvas";
 import type { CanvasNodeToolbarItem } from "@/types/canvas-plugin";
 import { ImageToolSettingsModal, type ImageToolbarSettingsTool } from "./canvas-image-toolbar-settings-modal";
@@ -83,6 +84,7 @@ export function CanvasNodeHoverToolbar({
     const [imageToolSettingsOpen, setImageToolSettingsOpen] = useState(false);
     const { message } = App.useApp();
     const copyText = useCopyText();
+    const preview = useCanvasInteractionStore((state) => (node ? state.nodePreviews.get(node.id) : undefined));
 
     useEffect(() => {
         try {
@@ -104,8 +106,10 @@ export function CanvasNodeHoverToolbar({
     if (!node) return null;
 
     const activeNode = node;
-    const left = viewport.x + (node.position.x + node.width / 2) * viewport.k;
-    const top = viewport.y + node.position.y * viewport.k - (node.type === CanvasNodeType.Text ? 32 : 14);
+    const position = preview?.position || node.position;
+    const width = preview?.width ?? node.width;
+    const left = viewport.x + (position.x + width / 2) * viewport.k;
+    const top = viewport.y + position.y * viewport.k - (node.type === CanvasNodeType.Text ? 32 : 14);
     const isImage = node.type === CanvasNodeType.Image;
     const isVideo = node.type === CanvasNodeType.Video;
     const isAudio = node.type === CanvasNodeType.Audio;
@@ -256,7 +260,22 @@ export function CanvasNodeInfoModal({ node, open, onClose }: { node: CanvasNodeD
                         <div className="thin-scrollbar h-full space-y-3 overflow-auto pr-1">
                             <InfoRow label="ID" value={node.id} />
                             <InfoRow label="名称" value={node.title || "未命名节点"} />
-                            <InfoRow label="类型" value={node.type === CanvasNodeType.Text ? "文本" : node.type === CanvasNodeType.Image ? "图片" : node.type === CanvasNodeType.Video ? "视频" : node.type === CanvasNodeType.Audio ? "音频" : node.type === CanvasNodeType.Group ? "组" : "生成配置"} />
+                            <InfoRow
+                                label="类型"
+                                value={
+                                    node.type === CanvasNodeType.Text
+                                        ? "文本"
+                                        : node.type === CanvasNodeType.Image
+                                          ? "图片"
+                                          : node.type === CanvasNodeType.Video
+                                            ? "视频"
+                                            : node.type === CanvasNodeType.Audio
+                                              ? "音频"
+                                              : node.type === CanvasNodeType.Group
+                                                ? "组"
+                                                : "生成配置"
+                                }
+                            />
                             <InfoRow label="尺寸" value={`${Math.round(node.width)} x ${Math.round(node.height)}`} />
                             <InfoRow label="位置" value={`${Math.round(node.position.x)}, ${Math.round(node.position.y)}`} />
                             <InfoRow label="状态" value={node.metadata?.status || "idle"} />

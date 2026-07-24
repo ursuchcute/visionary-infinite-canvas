@@ -1,5 +1,7 @@
 import { CanvasNodeType, type CanvasNodeData, type ConnectionHandle } from "@/types/canvas";
 
+type CanvasNodeLookup = CanvasNodeData[] | ReadonlyMap<string, CanvasNodeData>;
+
 export function nodeBounds(nodes: CanvasNodeData[]) {
     return nodes.reduce(
         (acc, node) => ({
@@ -63,9 +65,9 @@ export function getConnectionTargetAnchor(node: CanvasNodeData, current: Connect
     };
 }
 
-export function normalizeConnection(firstNodeId: string, secondNodeId: string, nodes: CanvasNodeData[], firstHandleType: "source" | "target") {
-    const first = nodes.find((node) => node.id === firstNodeId);
-    const second = nodes.find((node) => node.id === secondNodeId);
+export function normalizeConnection(firstNodeId: string, secondNodeId: string, nodes: CanvasNodeLookup, firstHandleType: "source" | "target") {
+    const first = findNode(nodes, firstNodeId);
+    const second = findNode(nodes, secondNodeId);
     if (!first || !second || first.id === second.id) return null;
     if (first.type === CanvasNodeType.Group || second.type === CanvasNodeType.Group) return null;
     if (first.type === CanvasNodeType.Config && second.type === CanvasNodeType.Config) return null;
@@ -75,17 +77,21 @@ export function normalizeConnection(firstNodeId: string, secondNodeId: string, n
     return { fromNodeId: first.id, toNodeId: second.id };
 }
 
-export function isHiddenBatchChild(node: CanvasNodeData, nodes: CanvasNodeData[], collapsingBatchIds?: Set<string>) {
+export function isHiddenBatchChild(node: CanvasNodeData, nodes: CanvasNodeLookup, collapsingBatchIds?: Set<string>) {
     const rootId = node.metadata?.batchRootId;
     if (!rootId) return false;
-    const root = nodes.find((item) => item.id === rootId);
+    const root = findNode(nodes, rootId);
     if (root && collapsingBatchIds?.has(rootId)) return false;
     return Boolean(root && !root.metadata?.imageBatchExpanded);
 }
 
-export function isHiddenBatchConnectionEndpoint(node: CanvasNodeData, nodes: CanvasNodeData[]) {
+export function isHiddenBatchConnectionEndpoint(node: CanvasNodeData, nodes: CanvasNodeLookup) {
     const rootId = node.metadata?.batchRootId;
     if (!rootId) return false;
-    const root = nodes.find((item) => item.id === rootId);
+    const root = findNode(nodes, rootId);
     return Boolean(root && !root.metadata?.imageBatchExpanded);
+}
+
+function findNode(nodes: CanvasNodeLookup, nodeId: string) {
+    return Array.isArray(nodes) ? nodes.find((node) => node.id === nodeId) : nodes.get(nodeId);
 }
