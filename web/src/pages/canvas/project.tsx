@@ -20,6 +20,7 @@ import { fitNodeSize, nodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
 import { App, Button, Modal } from "antd";
 import { NODE_DEFAULT_SIZE, getNodeSpec } from "@/constant/canvas";
 import { CanvasConnectionLayer } from "@/components/canvas/canvas-connection-layer";
+import { CanvasGraphLayer } from "@/components/canvas/canvas-graph-layer";
 import { CanvasConfigComposer } from "@/components/canvas/canvas-config-composer";
 import { CanvasConfigNodePanel } from "@/components/canvas/canvas-config-node-panel";
 import { CanvasNodeContextMenu } from "@/components/canvas/canvas-context-menu";
@@ -202,7 +203,6 @@ function InfiniteCanvasPage() {
     const [chatSessions, setChatSessions] = useState<CanvasAssistantSession[]>([]);
     const [activeChatId, setActiveChatId] = useState<string | null>(null);
     const [viewport, setPersistedViewport] = useState<ViewportTransform>({ x: 0, y: 0, k: 1 });
-    const [cullingViewport, setCullingViewport] = useState<ViewportTransform>(viewport);
     const [size, setSize] = useState({ width: 1200, height: 720 });
     const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
     const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
@@ -245,7 +245,6 @@ function InfiniteCanvasPage() {
     const connectionsRef = useRef(connections);
     const selectedNodeIdsRef = useRef(selectedNodeIds);
     const viewportRef = useRef(viewport);
-    const programmaticCullingAtRef = useRef(0);
     const focusAnimRef = useRef<number | null>(null);
     const generateNodeRef = useRef<((nodeId: string, mode: CanvasNodeGenerationMode, prompt: string) => Promise<void>) | null>(null);
     const connectingParamsRef = useRef(connectingParams);
@@ -260,7 +259,7 @@ function InfiniteCanvasPage() {
 
     useLayoutEffect(() => {
         if (!import.meta.env.DEV || typeof window === "undefined") return;
-        const benchmarkWindow = window as Window & { __VCANVAS_BENCHMARK__?: { active: boolean; projectCommits: number } };
+        const benchmarkWindow = window as Window & { __VCANVAS_BENCHMARK__?: { active: boolean; projectCommits: number; graphCommits: number } };
         if (benchmarkWindow.__VCANVAS_BENCHMARK__?.active) benchmarkWindow.__VCANVAS_BENCHMARK__.projectCommits += 1;
     });
 
@@ -269,19 +268,10 @@ function InfiniteCanvasPage() {
         useCanvasViewportStore.getState().setViewport(next);
     }, []);
 
-    const previewViewport = useCallback(
-        (next: ViewportTransform) => {
-            syncTransientViewport(next);
-            setCullingViewport(next);
-        },
-        [syncTransientViewport],
-    );
-
     const setViewport = useCallback<React.Dispatch<React.SetStateAction<ViewportTransform>>>(
         (value) => {
             const next = typeof value === "function" ? value(viewportRef.current) : value;
             syncTransientViewport(next);
-            setCullingViewport(next);
             setPersistedViewport(next);
         },
         [syncTransientViewport],
@@ -627,18 +617,6 @@ function InfiniteCanvasPage() {
         [screenToCanvas],
     );
 
-    const visibleNodes = useMemo(() => {
-        const padding = 280;
-        const rect = containerRef.current?.getBoundingClientRect();
-        const width = rect?.width || size.width;
-        const height = rect?.height || size.height;
-        const viewLeft = -cullingViewport.x / cullingViewport.k - padding;
-        const viewTop = -cullingViewport.y / cullingViewport.k - padding;
-        const viewRight = viewLeft + width / cullingViewport.k + padding * 2;
-        const viewBottom = viewTop + height / cullingViewport.k + padding * 2;
-
-        return nodes.filter((node) => !visibleHiddenBatchNodeIds.has(node.id) && node.position.x + node.width > viewLeft && node.position.x < viewRight && node.position.y + node.height > viewTop && node.position.y < viewBottom);
-    }, [cullingViewport.k, cullingViewport.x, cullingViewport.y, nodes, size.height, size.width, visibleHiddenBatchNodeIds]);
     // 工具条跟随「单选节点」:点击/新建/框选/键盘选中任一节点都会显示,不再仅靠精确点中触发。
     // 多选时不显示;拖拽中由下方 isNodeDragging 守卫隐藏。
     const singleSelectedNodeId = selectedNodeIds.size === 1 ? Array.from(selectedNodeIds)[0] : null;
@@ -978,10 +956,6 @@ function InfiniteCanvasPage() {
                 const t = easeOutCubic(progress);
                 const next = { x: start.x + (target.x - start.x) * t, y: start.y + (target.y - start.y) * t, k: start.k + (target.k - start.k) * t };
                 syncTransientViewport(next);
-                if (now - programmaticCullingAtRef.current >= 100) {
-                    programmaticCullingAtRef.current = now;
-                    setCullingViewport(next);
-                }
                 if (progress < 1) {
                     focusAnimRef.current = requestAnimationFrame(step);
                 } else {
@@ -2803,7 +2777,6 @@ function InfiniteCanvasPage() {
                     containerRef={containerRef}
                     viewport={viewport}
                     backgroundMode={backgroundMode}
-                    onViewportPreview={previewViewport}
                     onViewportChange={commitViewport}
                     onCanvasMouseDown={handleCanvasMouseDown}
                     onCanvasDeselect={deselectCanvas}
@@ -2814,62 +2787,69 @@ function InfiniteCanvasPage() {
                     onContextMenu={preventCanvasContextMenu}
                     onDrop={handleDrop}
                 >
-                    <CanvasConnectionLayer
-                        connections={connections}
-                        nodeById={nodeById}
-                        hiddenNodeIds={graph.hiddenBatchNodeIds}
-                        selectedNodeIds={selectedNodeIds}
-                        selectedConnectionId={selectedConnectionId}
-                        activeConnectionIds={relatedHighlight.connectionIds}
-                        viewport={cullingViewport}
+                    <CanvasGraphLayer
+                        nodes={nodes}
+                        hiddenNodeIds={visibleHiddenBatchNodeIds}
+                        viewport={viewport}
                         viewportSize={size}
-                        connectingParams={connectingParams}
-                        mouseWorld={mouseWorld}
-                        connectionTargetNodeId={connectionTargetNodeId}
-                        onSelect={handleConnectionSelect}
-                        onContextMenu={handleConnectionContextMenu}
+                        renderConnections={(graphViewport) => (
+                            <CanvasConnectionLayer
+                                connections={connections}
+                                nodeById={nodeById}
+                                hiddenNodeIds={graph.hiddenBatchNodeIds}
+                                selectedNodeIds={selectedNodeIds}
+                                selectedConnectionId={selectedConnectionId}
+                                activeConnectionIds={relatedHighlight.connectionIds}
+                                viewport={graphViewport}
+                                viewportSize={size}
+                                connectingParams={connectingParams}
+                                mouseWorld={mouseWorld}
+                                connectionTargetNodeId={connectionTargetNodeId}
+                                onSelect={handleConnectionSelect}
+                                onContextMenu={handleConnectionContextMenu}
+                            />
+                        )}
+                        renderNode={(node) => (
+                            <CanvasNode
+                                key={node.id}
+                                data={node}
+                                scale={viewport.k}
+                                isSelected={selectedNodeIds.has(node.id)}
+                                isRelated={relatedHighlight.nodeIds.has(node.id)}
+                                isFocusRelated={activeNodeId === node.id}
+                                isConnectionTarget={connectionTargetNodeId === node.id}
+                                isConnecting={Boolean(connectingParams)}
+                                editRequestNonce={editingNodeId === node.id ? editRequestNonce : 0}
+                                batchCount={batchChildCountById.get(node.id) || 0}
+                                groupChildCount={groupChildCountById.get(node.id) || 0}
+                                isGroupDropTarget={dropTargetGroupId === node.id}
+                                batchExpanded={Boolean(node.metadata?.imageBatchExpanded)}
+                                batchClosing={Boolean(node.metadata?.batchRootId && collapsingBatchIds.has(node.metadata.batchRootId))}
+                                batchOpening={openingBatchIds.has(node.id)}
+                                batchRecovering={collapsingBatchIds.has(node.id)}
+                                batchMotion={batchMotionById.get(node.id)}
+                                showImageInfo={showImageInfo}
+                                mentionReferences={mentionReferencesByNodeId.get(node.id) || EMPTY_REFERENCES}
+                                pluginHost={pluginHost}
+                                registryVersion={nodeRegistryVersion}
+                                renderNodeContent={renderNodeContentPanel}
+                                onMouseDown={handleNodeMouseDown}
+                                onSelectCapture={handleNodeSelectCapture}
+                                onHoverStart={handleNodeHoverStart}
+                                onHoverEnd={handleNodeHoverEnd}
+                                onConnectStart={handleConnectStart}
+                                onResize={handleNodeResize}
+                                onContentChange={handleNodeContentChange}
+                                onTitleChange={handleNodeTitleChange}
+                                onToggleBatch={toggleBatchExpanded}
+                                onSetBatchPrimary={setBatchPrimary}
+                                onRetry={handleNodeRetry}
+                                onGenerateImage={generateImageFromTextNode}
+                                onViewImage={handleNodeViewImage}
+                                onContextMenu={handleNodeContextMenu}
+                            />
+                        )}
                     />
-
-                    {visibleNodes.map((node) => (
-                        <CanvasNode
-                            key={node.id}
-                            data={node}
-                            scale={viewport.k}
-                            isSelected={selectedNodeIds.has(node.id)}
-                            isRelated={relatedHighlight.nodeIds.has(node.id)}
-                            isFocusRelated={activeNodeId === node.id}
-                            isConnectionTarget={connectionTargetNodeId === node.id}
-                            isConnecting={Boolean(connectingParams)}
-                            editRequestNonce={editingNodeId === node.id ? editRequestNonce : 0}
-                            batchCount={batchChildCountById.get(node.id) || 0}
-                            groupChildCount={groupChildCountById.get(node.id) || 0}
-                            isGroupDropTarget={dropTargetGroupId === node.id}
-                            batchExpanded={Boolean(node.metadata?.imageBatchExpanded)}
-                            batchClosing={Boolean(node.metadata?.batchRootId && collapsingBatchIds.has(node.metadata.batchRootId))}
-                            batchOpening={openingBatchIds.has(node.id)}
-                            batchRecovering={collapsingBatchIds.has(node.id)}
-                            batchMotion={batchMotionById.get(node.id)}
-                            showImageInfo={showImageInfo}
-                            mentionReferences={mentionReferencesByNodeId.get(node.id) || EMPTY_REFERENCES}
-                            pluginHost={pluginHost}
-                            registryVersion={nodeRegistryVersion}
-                            renderNodeContent={renderNodeContentPanel}
-                            onMouseDown={handleNodeMouseDown}
-                            onSelectCapture={handleNodeSelectCapture}
-                            onHoverStart={handleNodeHoverStart}
-                            onHoverEnd={handleNodeHoverEnd}
-                            onConnectStart={handleConnectStart}
-                            onResize={handleNodeResize}
-                            onContentChange={handleNodeContentChange}
-                            onTitleChange={handleNodeTitleChange}
-                            onToggleBatch={toggleBatchExpanded}
-                            onSetBatchPrimary={setBatchPrimary}
-                            onRetry={handleNodeRetry}
-                            onGenerateImage={generateImageFromTextNode}
-                            onViewImage={handleNodeViewImage}
-                            onContextMenu={handleNodeContextMenu}
-                        />
-                    ))}
 
                     {selectionBox ? (
                         <div
@@ -2952,7 +2932,7 @@ function InfiniteCanvasPage() {
                     onShowImageInfoChange={setShowImageInfo}
                 />
 
-                {isMiniMapOpen ? <Minimap nodes={nodes} viewportSize={size} onViewportPreview={previewViewport} onViewportChange={setViewport} /> : null}
+                {isMiniMapOpen ? <Minimap nodes={nodes} viewportSize={size} onViewportChange={setViewport} /> : null}
 
                 <CanvasZoomControls onScaleChange={setZoomScale} onReset={resetViewport} isMiniMapOpen={isMiniMapOpen} onToggleMiniMap={() => setIsMiniMapOpen((value) => !value)} />
 

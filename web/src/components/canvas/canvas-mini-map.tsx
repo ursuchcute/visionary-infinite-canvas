@@ -7,22 +7,9 @@ import { useCanvasInteractionStore } from "@/stores/canvas/use-canvas-interactio
 import { useCanvasViewportStore } from "@/stores/canvas/use-canvas-viewport-store";
 import { type CanvasNodeData, type ViewportTransform } from "@/types/canvas";
 
-const VIEWPORT_PREVIEW_INTERVAL = 100;
-
-export function Minimap({
-    nodes,
-    viewportSize,
-    onViewportPreview,
-    onViewportChange,
-}: {
-    nodes: CanvasNodeData[];
-    viewportSize: { width: number; height: number };
-    onViewportPreview?: (viewport: ViewportTransform) => void;
-    onViewportChange: (viewport: ViewportTransform) => void;
-}) {
+export function Minimap({ nodes, viewportSize, onViewportChange }: { nodes: CanvasNodeData[]; viewportSize: { width: number; height: number }; onViewportChange: (viewport: ViewportTransform) => void }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const containerRef = useRef<HTMLDivElement>(null);
-    const lastPreviewAtRef = useRef(0);
     const [isDragging, setIsDragging] = useState(false);
     const nodePreviews = useCanvasInteractionStore((state) => state.nodePreviews);
     const width = 240;
@@ -99,16 +86,10 @@ export function Minimap({
             k: viewport.k,
         };
         useCanvasViewportStore.getState().setViewport(next);
-        const now = performance.now();
-        if (now - lastPreviewAtRef.current >= VIEWPORT_PREVIEW_INTERVAL) {
-            lastPreviewAtRef.current = now;
-            onViewportPreview?.(next);
-        }
     };
 
     const commitViewport = () => {
         const next = useCanvasViewportStore.getState().viewport;
-        onViewportPreview?.(next);
         onViewportChange(next);
         setIsDragging(false);
     };

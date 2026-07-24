@@ -123,7 +123,7 @@ async function runCase(browser, nodeCount) {
 
     await page.evaluate(() => {
         const benchmarkWindow = window;
-        benchmarkWindow.__VCANVAS_BENCHMARK__ = { active: true, projectCommits: 0 };
+        benchmarkWindow.__VCANVAS_BENCHMARK__ = { active: true, projectCommits: 0, graphCommits: 0 };
         const canvasElement = document.querySelector("[data-canvas-viewport]");
         if (canvasElement) canvasElement.dataset.canvasViewportUpdates = "0";
 
@@ -176,6 +176,7 @@ async function runCase(browser, nodeCount) {
             frameTimes: state.frameTimes,
             longTasks: state.longTasks,
             projectCommits: benchmarkWindow.__VCANVAS_BENCHMARK__.projectCommits,
+            graphCommits: benchmarkWindow.__VCANVAS_BENCHMARK__.graphCommits,
             viewportUpdates: Number(canvasElement?.dataset.canvasViewportUpdates || "0"),
             renderedNodes: document.querySelectorAll("[data-node-id]").length,
             renderedConnections: document.querySelectorAll("[data-connection-id]").length,
@@ -267,6 +268,7 @@ async function runCase(browser, nodeCount) {
         durationMs: Math.round(raw.duration),
         viewportUpdates: raw.viewportUpdates,
         projectCommits: raw.projectCommits,
+        graphCommits: raw.graphCommits,
         commitIsolationRatio: raw.viewportUpdates ? Number((raw.projectCommits / raw.viewportUpdates).toFixed(3)) : 0,
         averageFps: raw.duration ? Number((((raw.frameTimes.length - 1) * 1000) / raw.duration).toFixed(1)) : 0,
         p95FrameMs: Number(percentile(frameIntervals, 0.95).toFixed(2)),
@@ -326,6 +328,7 @@ try {
             result.pageErrors.length ||
             result.viewportUpdates < 10 ||
             result.projectCommits >= result.viewportUpdates ||
+            result.projectCommits >= result.graphCommits ||
             !result.zoomChanged ||
             !result.viewportPersisted ||
             !result.connectionFollowsDrag ||
@@ -342,4 +345,7 @@ try {
 } finally {
     await browser?.close();
     server.kill("SIGTERM");
+    server.stdout.destroy();
+    server.stderr.destroy();
+    server.unref();
 }

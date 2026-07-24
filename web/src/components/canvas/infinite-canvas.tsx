@@ -5,14 +5,12 @@ import { useCanvasViewportStore } from "@/stores/canvas/use-canvas-viewport-stor
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { ViewportTransform } from "@/types/canvas";
 
-const VIEWPORT_PREVIEW_INTERVAL = 100;
 const WHEEL_COMMIT_DELAY = 140;
 
 type InfiniteCanvasProps = {
     containerRef: React.RefObject<HTMLDivElement | null>;
     viewport: ViewportTransform;
     backgroundMode?: CanvasBackgroundMode;
-    onViewportPreview?: (viewport: ViewportTransform) => void;
     onViewportChange: (viewport: ViewportTransform) => void;
     onCanvasMouseDown?: (event: React.PointerEvent<HTMLDivElement>) => void;
     onCanvasDeselect?: () => void;
@@ -22,7 +20,7 @@ type InfiniteCanvasProps = {
     children: React.ReactNode;
 };
 
-export function InfiniteCanvas({ containerRef, viewport, backgroundMode = "lines", onViewportPreview, onViewportChange, onCanvasMouseDown, onCanvasDeselect, onCanvasDoubleClick, onContextMenu, onDrop, children }: InfiniteCanvasProps) {
+export function InfiniteCanvas({ containerRef, viewport, backgroundMode = "lines", onViewportChange, onCanvasMouseDown, onCanvasDeselect, onCanvasDoubleClick, onContextMenu, onDrop, children }: InfiniteCanvasProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const stageRef = useRef<HTMLDivElement>(null);
     const gridRef = useRef<HTMLDivElement>(null);
@@ -36,7 +34,6 @@ export function InfiniteCanvas({ containerRef, viewport, backgroundMode = "lines
     });
     const frameRef = useRef<number | null>(null);
     const nextViewportRef = useRef<ViewportTransform | null>(null);
-    const lastPreviewAtRef = useRef(0);
     const wheelCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [isSpacePressed, setIsSpacePressed] = useState(false);
 
@@ -76,24 +73,13 @@ export function InfiniteCanvas({ containerRef, viewport, backgroundMode = "lines
         useCanvasViewportStore.getState().setViewport(next);
     }, []);
 
-    const previewViewport = useCallback(
-        (next: ViewportTransform, force = false) => {
-            const now = performance.now();
-            if (!force && now - lastPreviewAtRef.current < VIEWPORT_PREVIEW_INTERVAL) return;
-            lastPreviewAtRef.current = now;
-            onViewportPreview?.(next);
-        },
-        [onViewportPreview],
-    );
-
     const flushViewportFrame = useCallback(() => {
         frameRef.current = null;
         const next = nextViewportRef.current;
         if (!next) return;
         nextViewportRef.current = null;
         applyViewport(next);
-        previewViewport(next);
-    }, [applyViewport, previewViewport]);
+    }, [applyViewport]);
 
     const scheduleViewport = useCallback(
         (next: ViewportTransform) => {
@@ -112,10 +98,9 @@ export function InfiniteCanvas({ containerRef, viewport, backgroundMode = "lines
             }
             nextViewportRef.current = null;
             applyViewport(next);
-            previewViewport(next, true);
             onViewportChange(next);
         },
-        [applyViewport, onViewportChange, previewViewport],
+        [applyViewport, onViewportChange],
     );
 
     useLayoutEffect(() => {
