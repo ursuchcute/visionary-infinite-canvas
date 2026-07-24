@@ -8,6 +8,7 @@ import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { buildNodeContext } from "@/lib/canvas/plugin-node-context";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { useCanvasInteractionStore } from "@/stores/canvas/use-canvas-interaction-store";
+import { useCanvasViewportStore } from "@/stores/canvas/use-canvas-viewport-store";
 import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textarea";
 import { CanvasNodeType, type CanvasNodeData, type Position } from "@/types/canvas";
 import type { CanvasNodeContext, CanvasPluginHost } from "@/types/canvas-plugin";
@@ -221,8 +222,9 @@ export const CanvasNode = React.memo(function CanvasNode({
         (event: MouseEvent) => {
             if (!resizeRef.current.isResizing) return;
 
-            const dx = (event.clientX - resizeRef.current.startX) / scale;
-            const dy = (event.clientY - resizeRef.current.startY) / scale;
+            const currentScale = Math.max(useCanvasViewportStore.getState().viewport.k, 0.05);
+            const dx = (event.clientX - resizeRef.current.startX) / currentScale;
+            const dy = (event.clientY - resizeRef.current.startY) / currentScale;
             const minWidth = 220;
             const minHeight = 160;
             const startRight = resizeRef.current.startLeft + resizeRef.current.startWidth;
@@ -259,7 +261,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                 height,
             });
         },
-        [data.id, scale],
+        [data.id],
     );
 
     const handleResizeUp = useCallback(() => {
@@ -461,14 +463,9 @@ export const CanvasNode = React.memo(function CanvasNode({
                 <ResizeHandle corner="bottom-right" onMouseDown={handleResizeMouseDown} />
             </div>
 
-            {!isGroup ? <ConnectionHandleDot side="left" scale={scale} visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "target")} /> : null}
+            {!isGroup ? <ConnectionHandleDot side="left" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "target")} /> : null}
             {!isGroup ? (
-                <ConnectionHandleDot
-                    side="right"
-                    scale={scale}
-                    visible={(definition?.hasSourceHandle ?? true) && data.type !== CanvasNodeType.Config && (hovered || isSelected || isConnecting)}
-                    onMouseDown={(event) => onConnectStart(event, data.id, "source")}
-                />
+                <ConnectionHandleDot side="right" visible={(definition?.hasSourceHandle ?? true) && data.type !== CanvasNodeType.Config && (hovered || isSelected || isConnecting)} onMouseDown={(event) => onConnectStart(event, data.id, "source")} />
             ) : null}
         </div>
     );
@@ -813,13 +810,13 @@ function ResizeHandle({ corner, onMouseDown }: { corner: ResizeCorner; onMouseDo
     return <div className={`absolute z-50 size-7 ${positionClass}`} onMouseDown={(event) => onMouseDown(event, corner)} />;
 }
 
-function ConnectionHandleDot({ side, scale, visible, onMouseDown }: { side: "left" | "right"; scale: number; visible: boolean; onMouseDown: (event: React.MouseEvent) => void }) {
+function ConnectionHandleDot({ side, visible, onMouseDown }: { side: "left" | "right"; visible: boolean; onMouseDown: (event: React.MouseEvent) => void }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
 
     return (
         <div
             className={`absolute top-1/2 z-30 size-0 transition-opacity duration-150 ${side === "left" ? "left-0" : "right-0"} ${visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
-            style={{ transform: `scale(${1 / Math.max(scale, 0.05)})`, transformOrigin: "center" }}
+            style={{ transform: "scale(var(--canvas-inverse-scale, 1))", transformOrigin: "center" }}
         >
             <button
                 type="button"

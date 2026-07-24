@@ -4,11 +4,25 @@ import { canvasThemes } from "@/lib/canvas-theme";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { useCanvasInteractionStore } from "@/stores/canvas/use-canvas-interaction-store";
+import { useCanvasViewportStore } from "@/stores/canvas/use-canvas-viewport-store";
 import { type CanvasNodeData, type ViewportTransform } from "@/types/canvas";
 
-export function Minimap({ nodes, viewport, viewportSize, onViewportChange }: { nodes: CanvasNodeData[]; viewport: ViewportTransform; viewportSize: { width: number; height: number }; onViewportChange: (viewport: ViewportTransform) => void }) {
+const VIEWPORT_PREVIEW_INTERVAL = 100;
+
+export function Minimap({
+    nodes,
+    viewportSize,
+    onViewportPreview,
+    onViewportChange,
+}: {
+    nodes: CanvasNodeData[];
+    viewportSize: { width: number; height: number };
+    onViewportPreview?: (viewport: ViewportTransform) => void;
+    onViewportChange: (viewport: ViewportTransform) => void;
+}) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const containerRef = useRef<HTMLDivElement>(null);
+    const lastPreviewAtRef = useRef(0);
     const [isDragging, setIsDragging] = useState(false);
     const nodePreviews = useCanvasInteractionStore((state) => state.nodePreviews);
     const width = 240;
@@ -73,32 +87,30 @@ export function Minimap({ nodes, viewport, viewportSize, onViewportChange }: { n
         [offset.x, offset.y, scale, worldBounds.x, worldBounds.y],
     );
 
-    const viewportRect = useMemo(() => {
-        const vx = -viewport.x / viewport.k;
-        const vy = -viewport.y / viewport.k;
-        const vw = viewportSize.width / viewport.k;
-        const vh = viewportSize.height / viewport.k;
-        const p1 = toMinimap(vx, vy);
-        const p2 = toMinimap(vx + vw, vy + vh);
-
-        return {
-            x: p1.x,
-            y: p1.y,
-            w: Math.max(p2.x - p1.x, 4),
-            h: Math.max(p2.y - p1.y, 4),
-        };
-    }, [toMinimap, viewport.k, viewport.x, viewport.y, viewportSize.height, viewportSize.width]);
-
     const updateViewportFromEvent = (event: React.PointerEvent) => {
         const rect = containerRef.current?.getBoundingClientRect();
         if (!rect) return;
 
+        const viewport = useCanvasViewportStore.getState().viewport;
         const world = toWorld(event.clientX - rect.left, event.clientY - rect.top);
-        onViewportChange({
+        const next = {
             x: viewportSize.width / 2 - world.x * viewport.k,
             y: viewportSize.height / 2 - world.y * viewport.k,
             k: viewport.k,
-        });
+        };
+        useCanvasViewportStore.getState().setViewport(next);
+        const now = performance.now();
+        if (now - lastPreviewAtRef.current >= VIEWPORT_PREVIEW_INTERVAL) {
+            lastPreviewAtRef.current = now;
+            onViewportPreview?.(next);
+        }
+    };
+
+    const commitViewport = () => {
+        const next = useCanvasViewportStore.getState().viewport;
+        onViewportPreview?.(next);
+        onViewportChange(next);
+        setIsDragging(false);
     };
 
     return (
@@ -115,8 +127,10 @@ export function Minimap({ nodes, viewport, viewportSize, onViewportChange }: { n
                 onPointerMove={(event) => {
                     if (isDragging) updateViewportFromEvent(event);
                 }}
-                onPointerUp={() => setIsDragging(false)}
-                onPointerLeave={() => setIsDragging(false)}
+                onPointerUp={commitViewport}
+                onPointerLeave={() => {
+                    if (isDragging) commitViewport();
+                }}
             >
                 {nodes.map((node) => {
                     const preview = nodePreviews.get(node.id);
@@ -140,8 +154,29 @@ export function Minimap({ nodes, viewport, viewportSize, onViewportChange }: { n
                         />
                     );
                 })}
-                <div className="pointer-events-none absolute border" style={{ left: viewportRect.x, top: viewportRect.y, width: viewportRect.w, height: viewportRect.h, borderColor: theme.node.activeStroke, background: `${theme.node.activeStroke}18` }} />
+                <MinimapViewportRect toMinimap={toMinimap} viewportSize={viewportSize} borderColor={theme.node.activeStroke} />
             </div>
         </div>
     );
+}
+
+function MinimapViewportRect({ toMinimap, viewportSize, borderColor }: { toMinimap: (worldX: number, worldY: number) => { x: number; y: number }; viewportSize: { width: number; height: number }; borderColor: string }) {
+    const viewport = useCanvasViewportStore((state) => state.viewport);
+    const viewportRect = useMemo(() => {
+        const vx = -viewport.x / viewport.k;
+        const vy = -viewport.y / viewport.k;
+        const vw = viewportSize.width / viewport.k;
+        const vh = viewportSize.height / viewport.k;
+        const p1 = toMinimap(vx, vy);
+        const p2 = toMinimap(vx + vw, vy + vh);
+
+        return {
+            x: p1.x,
+            y: p1.y,
+            w: Math.max(p2.x - p1.x, 4),
+            h: Math.max(p2.y - p1.y, 4),
+        };
+    }, [toMinimap, viewport.k, viewport.x, viewport.y, viewportSize.height, viewportSize.width]);
+
+    return <div className="pointer-events-none absolute border" style={{ left: viewportRect.x, top: viewportRect.y, width: viewportRect.w, height: viewportRect.h, borderColor, background: `${borderColor}18` }} />;
 }

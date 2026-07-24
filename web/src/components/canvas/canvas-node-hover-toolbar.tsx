@@ -7,14 +7,14 @@ import { formatBytes, getDataUrlByteSize } from "@/lib/image-utils";
 import { useCopyText } from "@/hooks/use-copy-text";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { useCanvasInteractionStore } from "@/stores/canvas/use-canvas-interaction-store";
-import { CanvasNodeType, type CanvasNodeData, type ViewportTransform } from "@/types/canvas";
+import { useCanvasViewportStore } from "@/stores/canvas/use-canvas-viewport-store";
+import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 import type { CanvasNodeToolbarItem } from "@/types/canvas-plugin";
 import { ImageToolSettingsModal, type ImageToolbarSettingsTool } from "./canvas-image-toolbar-settings-modal";
 import { IMAGE_QUICK_TOOLS_STORAGE_KEY, buildImageToolbarTools, defaultImageQuickToolIds, readImageQuickToolsConfig, type ImageQuickToolId } from "./canvas-image-toolbar-tools";
 
 type CanvasNodeHoverToolbarProps = {
     node: CanvasNodeData | null;
-    viewport: ViewportTransform;
     onKeep: (nodeId: string) => void;
     onLeave: () => void;
     onInfo: (node: CanvasNodeData) => void;
@@ -51,7 +51,6 @@ type ToolbarTool = {
 
 export function CanvasNodeHoverToolbar({
     node,
-    viewport,
     onKeep,
     onLeave,
     onInfo,
@@ -85,6 +84,7 @@ export function CanvasNodeHoverToolbar({
     const { message } = App.useApp();
     const copyText = useCopyText();
     const preview = useCanvasInteractionStore((state) => (node ? state.nodePreviews.get(node.id) : undefined));
+    const viewport = useCanvasViewportStore((state) => state.viewport);
 
     useEffect(() => {
         try {

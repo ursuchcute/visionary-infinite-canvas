@@ -4,18 +4,19 @@ import { useState } from "react";
 import { Button, Modal, Tooltip } from "antd";
 
 import { canvasThemes } from "@/lib/canvas-theme";
+import { useCanvasViewportStore } from "@/stores/canvas/use-canvas-viewport-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 
 type CanvasZoomControlsProps = {
-    scale: number;
     onScaleChange: (scale: number) => void;
     onReset: () => void;
     isMiniMapOpen: boolean;
     onToggleMiniMap: () => void;
 };
 
-export function CanvasZoomControls({ scale, onScaleChange, onReset, isMiniMapOpen, onToggleMiniMap }: CanvasZoomControlsProps) {
+export function CanvasZoomControls({ onScaleChange, onReset, isMiniMapOpen, onToggleMiniMap }: CanvasZoomControlsProps) {
     const [shortcutsOpen, setShortcutsOpen] = useState(false);
+    const scale = useCanvasViewportStore((state) => state.viewport.k);
     const colorTheme = useThemeStore((state) => state.theme);
     const theme = canvasThemes[colorTheme];
     const dockStyle = { background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item, boxShadow: colorTheme === "dark" ? "0 18px 45px rgba(0,0,0,.32)" : "0 16px 40px rgba(28,25,23,.12)" };
@@ -54,7 +55,14 @@ export function CanvasZoomControls({ scale, onScaleChange, onReset, isMiniMapOpe
                     {Math.round(scale * 100)}%
                 </span>
                 <Tooltip title="快捷键">
-                    <Button type="text" className="!h-6 !w-6 !min-w-6 !p-0 xl:!h-8 xl:!w-8 xl:!min-w-8 [&_svg]:size-3.5 xl:[&_svg]:size-4" style={shortcutsOpen ? activeStyle : { color: theme.toolbar.item }} icon={<HelpCircle />} onClick={() => setShortcutsOpen(true)} aria-label="快捷键" />
+                    <Button
+                        type="text"
+                        className="!h-6 !w-6 !min-w-6 !p-0 xl:!h-8 xl:!w-8 xl:!min-w-8 [&_svg]:size-3.5 xl:[&_svg]:size-4"
+                        style={shortcutsOpen ? activeStyle : { color: theme.toolbar.item }}
+                        icon={<HelpCircle />}
+                        onClick={() => setShortcutsOpen(true)}
+                        aria-label="快捷键"
+                    />
                 </Tooltip>
             </div>
             <Modal title="快捷键" open={shortcutsOpen} onCancel={() => setShortcutsOpen(false)} footer={null} centered>

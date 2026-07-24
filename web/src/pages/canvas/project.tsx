@@ -43,6 +43,7 @@ import { APP_SHORT_NAME } from "@/constant/env";
 import { useAgentStore } from "@/stores/use-agent-store";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useCanvasInteractionStore, type CanvasNodePreview } from "@/stores/canvas/use-canvas-interaction-store";
+import { useCanvasViewportStore } from "@/stores/canvas/use-canvas-viewport-store";
 import { useAgentBridge } from "@/pages/canvas/hooks/use-agent-bridge";
 import { useCanvasIndexes } from "@/pages/canvas/hooks/use-canvas-indexes";
 import { usePluginHost } from "@/pages/canvas/hooks/use-plugin-host";
@@ -200,7 +201,8 @@ function InfiniteCanvasPage() {
     const [connections, setConnections] = useState<CanvasConnection[]>([]);
     const [chatSessions, setChatSessions] = useState<CanvasAssistantSession[]>([]);
     const [activeChatId, setActiveChatId] = useState<string | null>(null);
-    const [viewport, setViewport] = useState<ViewportTransform>({ x: 0, y: 0, k: 1 });
+    const [viewport, setPersistedViewport] = useState<ViewportTransform>({ x: 0, y: 0, k: 1 });
+    const [cullingViewport, setCullingViewport] = useState<ViewportTransform>(viewport);
     const [size, setSize] = useState({ width: 1200, height: 720 });
     const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
     const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
@@ -243,6 +245,7 @@ function InfiniteCanvasPage() {
     const connectionsRef = useRef(connections);
     const selectedNodeIdsRef = useRef(selectedNodeIds);
     const viewportRef = useRef(viewport);
+    const programmaticCullingAtRef = useRef(0);
     const focusAnimRef = useRef<number | null>(null);
     const generateNodeRef = useRef<((nodeId: string, mode: CanvasNodeGenerationMode, prompt: string) => Promise<void>) | null>(null);
     const connectingParamsRef = useRef(connectingParams);
@@ -254,6 +257,43 @@ function InfiniteCanvasPage() {
     const nodeById = graph.nodeById;
     const nodeByIdRef = useRef(nodeById);
     const hiddenBatchNodeIdsRef = useRef(graph.hiddenBatchNodeIds);
+
+    useLayoutEffect(() => {
+        if (!import.meta.env.DEV || typeof window === "undefined") return;
+        const benchmarkWindow = window as Window & { __VCANVAS_BENCHMARK__?: { active: boolean; projectCommits: number } };
+        if (benchmarkWindow.__VCANVAS_BENCHMARK__?.active) benchmarkWindow.__VCANVAS_BENCHMARK__.projectCommits += 1;
+    });
+
+    const syncTransientViewport = useCallback((next: ViewportTransform) => {
+        viewportRef.current = next;
+        useCanvasViewportStore.getState().setViewport(next);
+    }, []);
+
+    const previewViewport = useCallback(
+        (next: ViewportTransform) => {
+            syncTransientViewport(next);
+            setCullingViewport(next);
+        },
+        [syncTransientViewport],
+    );
+
+    const setViewport = useCallback<React.Dispatch<React.SetStateAction<ViewportTransform>>>(
+        (value) => {
+            const next = typeof value === "function" ? value(viewportRef.current) : value;
+            syncTransientViewport(next);
+            setCullingViewport(next);
+            setPersistedViewport(next);
+        },
+        [syncTransientViewport],
+    );
+
+    const commitViewport = useCallback(
+        (next: ViewportTransform) => {
+            setViewport(next);
+            setContextMenu(null);
+        },
+        [setViewport],
+    );
 
     const createHistoryEntry = useCallback(
         (): CanvasHistoryEntry => ({
@@ -404,7 +444,7 @@ function InfiniteCanvasPage() {
         if (!projectLoaded) return;
         if (viewportSaveTimerRef.current) clearTimeout(viewportSaveTimerRef.current);
         viewportSaveTimerRef.current = setTimeout(() => {
-            updateProject(projectId, { viewport: viewportRef.current });
+            updateProject(projectId, { viewport });
             viewportSaveTimerRef.current = null;
         }, 500);
         return () => {
@@ -416,13 +456,16 @@ function InfiniteCanvasPage() {
         nodesRef.current = nodes;
         connectionsRef.current = connections;
         selectedNodeIdsRef.current = selectedNodeIds;
-        viewportRef.current = viewport;
         connectingParamsRef.current = connectingParams;
         connectionTargetNodeIdRef.current = connectionTargetNodeId;
         pendingConnectionCreateRef.current = pendingConnectionCreate;
         nodeByIdRef.current = nodeById;
         hiddenBatchNodeIdsRef.current = graph.hiddenBatchNodeIds;
-    }, [nodes, connections, selectedNodeIds, viewport, connectingParams, connectionTargetNodeId, pendingConnectionCreate, nodeById, graph.hiddenBatchNodeIds]);
+    }, [nodes, connections, selectedNodeIds, connectingParams, connectionTargetNodeId, pendingConnectionCreate, nodeById, graph.hiddenBatchNodeIds]);
+
+    useLayoutEffect(() => {
+        syncTransientViewport(viewport);
+    }, [syncTransientViewport, viewport]);
 
     useLayoutEffect(() => {
         selectionBoxRef.current = selectionBox;
@@ -589,13 +632,13 @@ function InfiniteCanvasPage() {
         const rect = containerRef.current?.getBoundingClientRect();
         const width = rect?.width || size.width;
         const height = rect?.height || size.height;
-        const viewLeft = -viewport.x / viewport.k - padding;
-        const viewTop = -viewport.y / viewport.k - padding;
-        const viewRight = viewLeft + width / viewport.k + padding * 2;
-        const viewBottom = viewTop + height / viewport.k + padding * 2;
+        const viewLeft = -cullingViewport.x / cullingViewport.k - padding;
+        const viewTop = -cullingViewport.y / cullingViewport.k - padding;
+        const viewRight = viewLeft + width / cullingViewport.k + padding * 2;
+        const viewBottom = viewTop + height / cullingViewport.k + padding * 2;
 
         return nodes.filter((node) => !visibleHiddenBatchNodeIds.has(node.id) && node.position.x + node.width > viewLeft && node.position.x < viewRight && node.position.y + node.height > viewTop && node.position.y < viewBottom);
-    }, [nodes, size.height, size.width, viewport.k, viewport.x, viewport.y, visibleHiddenBatchNodeIds]);
+    }, [cullingViewport.k, cullingViewport.x, cullingViewport.y, nodes, size.height, size.width, visibleHiddenBatchNodeIds]);
     // 工具条跟随「单选节点」:点击/新建/框选/键盘选中任一节点都会显示,不再仅靠精确点中触发。
     // 多选时不显示;拖拽中由下方 isNodeDragging 守卫隐藏。
     const singleSelectedNodeId = selectedNodeIds.size === 1 ? Array.from(selectedNodeIds)[0] : null;
@@ -933,12 +976,22 @@ function InfiniteCanvasPage() {
                 if (startTime === null) startTime = now;
                 const progress = Math.min((now - startTime) / duration, 1);
                 const t = easeOutCubic(progress);
-                setViewport({ x: start.x + (target.x - start.x) * t, y: start.y + (target.y - start.y) * t, k: start.k + (target.k - start.k) * t });
-                focusAnimRef.current = progress < 1 ? requestAnimationFrame(step) : null;
+                const next = { x: start.x + (target.x - start.x) * t, y: start.y + (target.y - start.y) * t, k: start.k + (target.k - start.k) * t };
+                syncTransientViewport(next);
+                if (now - programmaticCullingAtRef.current >= 100) {
+                    programmaticCullingAtRef.current = now;
+                    setCullingViewport(next);
+                }
+                if (progress < 1) {
+                    focusAnimRef.current = requestAnimationFrame(step);
+                } else {
+                    focusAnimRef.current = null;
+                    setViewport(target);
+                }
             };
             focusAnimRef.current = requestAnimationFrame(step);
         },
-        [size.height, size.width],
+        [setViewport, size.height, size.width, syncTransientViewport],
     );
 
     useEffect(() => () => void (focusAnimRef.current && cancelAnimationFrame(focusAnimRef.current)), []);
@@ -2750,10 +2803,8 @@ function InfiniteCanvasPage() {
                     containerRef={containerRef}
                     viewport={viewport}
                     backgroundMode={backgroundMode}
-                    onViewportChange={(next) => {
-                        setViewport(next);
-                        setContextMenu(null);
-                    }}
+                    onViewportPreview={previewViewport}
+                    onViewportChange={commitViewport}
                     onCanvasMouseDown={handleCanvasMouseDown}
                     onCanvasDeselect={deselectCanvas}
                     onCanvasDoubleClick={(event) => {
@@ -2858,14 +2909,13 @@ function InfiniteCanvasPage() {
                 </InfiniteCanvas>
 
                 {panelNode && panelNode.type !== CanvasNodeType.Group && !getNodeDefinition(panelNode.type)?.hidePanel ? (
-                    <CanvasNodePanelOverlay node={panelNode} viewport={viewport} className={`absolute z-[70] max-w-[calc(100vw-32px)] -translate-x-1/2 pt-4 ${panelNode.type === CanvasNodeType.Text ? "w-[640px]" : "w-[600px]"}`}>
+                    <CanvasNodePanelOverlay node={panelNode} className={`absolute z-[70] max-w-[calc(100vw-32px)] -translate-x-1/2 pt-4 ${panelNode.type === CanvasNodeType.Text ? "w-[640px]" : "w-[600px]"}`}>
                         {renderNodePanel(panelNode)}
                     </CanvasNodePanelOverlay>
                 ) : null}
 
                 <CanvasNodeHoverToolbar
                     node={isNodeDragging || nodeImageSettingsOpen || connectingParams || pendingConnectionCreate ? null : toolbarNode}
-                    viewport={viewport}
                     extraTools={toolbarNode ? buildNodeToolbarItems(toolbarNode) : undefined}
                     onKeep={keepNodeToolbar}
                     onLeave={hideNodeToolbar}
@@ -2913,9 +2963,9 @@ function InfiniteCanvasPage() {
                     onShowImageInfoChange={setShowImageInfo}
                 />
 
-                {isMiniMapOpen ? <Minimap nodes={nodes} viewport={viewport} viewportSize={size} onViewportChange={setViewport} /> : null}
+                {isMiniMapOpen ? <Minimap nodes={nodes} viewportSize={size} onViewportPreview={previewViewport} onViewportChange={setViewport} /> : null}
 
-                <CanvasZoomControls scale={viewport.k} onScaleChange={setZoomScale} onReset={resetViewport} isMiniMapOpen={isMiniMapOpen} onToggleMiniMap={() => setIsMiniMapOpen((value) => !value)} />
+                <CanvasZoomControls onScaleChange={setZoomScale} onReset={resetViewport} isMiniMapOpen={isMiniMapOpen} onToggleMiniMap={() => setIsMiniMapOpen((value) => !value)} />
 
                 {contextMenu ? (
                     <CanvasNodeContextMenu
