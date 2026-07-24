@@ -55,7 +55,12 @@ export function UserStatusActions({ showConfig = true, variant = "default", onOp
     return (
         <div className="inline-flex shrink-0 items-center gap-1">
             {showConfig ? (
-                <button type="button" className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg px-2.5 text-sm font-medium text-stone-700 transition hover:bg-black/5 hover:text-stone-950 dark:text-stone-200 dark:hover:bg-white/10 dark:hover:text-white" style={iconStyle} onClick={() => openConfigDialog(false)}>
+                <button
+                    type="button"
+                    className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg px-2.5 text-[14px] font-medium leading-5 text-stone-700 transition hover:bg-black/5 hover:text-stone-950 dark:text-stone-200 dark:hover:bg-white/10 dark:hover:text-white"
+                    style={iconStyle}
+                    onClick={() => openConfigDialog(false)}
+                >
                     配置
                 </button>
             ) : null}

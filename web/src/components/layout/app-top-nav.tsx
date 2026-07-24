@@ -48,10 +48,10 @@ export function AppTopNav() {
                                             key={tool.slug}
                                             to={`/${tool.slug}`}
                                             className={cn(
-                                                "inline-flex h-8 shrink-0 items-center justify-center gap-2 rounded-lg px-2 text-sm font-medium transition sm:px-2.5",
+                                                "inline-flex h-8 shrink-0 items-center justify-center gap-2 rounded-lg px-2 text-[14px] font-medium leading-5 transition sm:px-2.5",
                                                 active
-                                                    ? "bg-[var(--visionary-surface-hover)] text-stone-950 dark:text-stone-100"
-                                                    : "text-stone-500 hover:bg-black/5 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-white/10 dark:hover:text-stone-100",
+                                                    ? "bg-black/[.08] text-stone-950 ring-1 ring-inset ring-black/10 dark:bg-white/15 dark:text-white dark:ring-white/10"
+                                                    : "text-stone-700 hover:bg-black/5 hover:text-stone-950 dark:text-stone-200 dark:hover:bg-white/10 dark:hover:text-white",
                                             )}
                                             aria-current={active ? "page" : undefined}
                                             aria-label={tool.label}
