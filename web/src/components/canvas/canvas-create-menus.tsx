@@ -77,7 +77,7 @@ export function NodeCreateMenu({ position, onCreate, onClose }: { position: Posi
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     useNodeRegistryVersion();
     const menuRef = useRef<HTMLDivElement>(null);
-    const definitions = listNodeDefinitions().filter((def) => def.showInCreateMenu !== false);
+    const definitions = listNodeDefinitions().filter((def) => def.showInCreateMenu !== false && def.type !== CanvasNodeType.Config && def.type !== CanvasNodeType.Group);
     // 点击菜单外的空白处自动关闭
     useEffect(() => {
         const handlePointerDown = (event: PointerEvent) => {

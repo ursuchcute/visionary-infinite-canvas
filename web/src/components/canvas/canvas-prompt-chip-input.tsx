@@ -40,6 +40,7 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
     const [mention, setMention] = useState<MentionState | null>(null);
     const [activeIndex, setActiveIndex] = useState(0);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
+    const [hasEditorContent, setHasEditorContent] = useState(Boolean(value.trim()));
 
     const activeReferences = useMemo(() => references.filter((item) => item.active), [references]);
     const referenceByLabel = useMemo(() => new Map(activeReferences.map((item) => [item.label, item])), [activeReferences]);
@@ -70,6 +71,7 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
             else editor.append(document.createTextNode(token.label));
         });
         lastEmittedRef.current = value;
+        setHasEditorContent(Boolean(value.trim()));
     }, [tokens, referenceByLabel, theme, value]);
 
     const emit = (next: string) => {
@@ -80,7 +82,9 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
     const syncFromEditor = () => {
         const editor = editorRef.current;
         if (!editor) return;
-        emit(serializeEditor(editor));
+        const next = serializeEditor(editor);
+        setHasEditorContent(Boolean(next.trim()));
+        emit(next);
         syncMention();
     };
 
@@ -123,7 +127,7 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
         emit(serializeEditor(editor));
     };
 
-    const showPlaceholder = !value.trim();
+    const showPlaceholder = !hasEditorContent;
 
     return (
         <div className="relative w-full">
@@ -140,11 +144,13 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
                 aria-multiline="true"
                 className={`${className || ""} overflow-y-auto whitespace-pre-wrap break-words outline-none`}
                 style={{ ...style, cursor: "text" }}
-                onInput={() => {
+                onInput={(event) => {
+                    setHasEditorContent(Boolean(serializeEditor(event.currentTarget).trim()));
                     if (!composingRef.current) syncFromEditor();
                 }}
                 onCompositionStart={() => {
                     composingRef.current = true;
+                    setHasEditorContent(true);
                 }}
                 onCompositionEnd={() => {
                     composingRef.current = false;

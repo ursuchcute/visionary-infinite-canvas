@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Brush, Camera, Copy, FileText, Grid2x2, Lock, LockOpen, Maximize2, Scissors, Sparkles, Upload, ZoomIn } from "lucide-react";
+import { Brush, Camera, Copy, FileText, Grid2x2, Lock, LockOpen, Maximize2, Scissors, Upload, ZoomIn } from "lucide-react";
 
 import type { CanvasNodeData } from "@/types/canvas";
 
@@ -114,15 +114,6 @@ export const imageToolDefinitions: ImageToolDefinition[] = [
         title: "放大图片分辨率",
         icon: () => <ZoomIn className="size-4" />,
         run: (node, handlers) => handlers.onUpscale(node),
-    },
-    {
-        id: "superResolve",
-        defaultVisible: false,
-        panelLabel: "超分",
-        label: "超分",
-        title: "AI 超分",
-        icon: () => <Sparkles className="size-4" />,
-        run: (node, handlers) => handlers.onSuperResolve(node),
     },
     {
         id: "angle",
