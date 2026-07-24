@@ -1,9 +1,12 @@
+import { useMemo } from "react";
 import { Check, Download, Maximize2, Pencil, Trash2, X } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button, Input } from "antd";
 
 import { useCanvasStore, type CanvasProject } from "@/stores/canvas/use-canvas-store";
 import { useCanvasUiStore } from "@/stores/canvas/use-canvas-ui-store";
+import { CanvasProjectCover } from "@/components/canvas/canvas-project-cover";
+import { getCanvasProjectCoverSource } from "@/lib/canvas/canvas-project-cover";
 import { APP_SHORT_NAME } from "@/constant/env";
 import { cn } from "@/lib/utils";
 
@@ -21,7 +24,7 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
     const setDeleteIds = useCanvasUiStore((state) => state.setDeleteProjectIds);
     const editing = editingId === project.id;
     const selected = selectedIds.includes(project.id);
-    const previewImage = [...project.nodes].reverse().find((node) => node.type === "image" && node.metadata?.content)?.metadata?.content;
+    const projectCoverSource = useMemo(() => getCanvasProjectCoverSource(project), [project]);
     const open = () => navigate(`/canvas/${project.id}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`);
     const saveTitle = () => {
         renameProject(project.id, editingTitle);
@@ -41,8 +44,11 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
             onClick={() => !editing && open()}
         >
             <div className="relative aspect-[16/9] overflow-hidden border-b border-black/[.06] bg-stone-100 dark:border-white/[.06] dark:bg-[#0b0b0b]">
-                {previewImage ? (
-                    <img src={previewImage} alt="" className="size-full object-cover transition duration-500 group-hover:scale-[1.03]" />
+                {projectCoverSource ? (
+                    <>
+                        <div className="absolute inset-0 bg-gradient-to-br from-white via-stone-100 to-stone-200 dark:from-white/[.08] dark:via-white/[.025] dark:to-transparent" />
+                        <CanvasProjectCover source={projectCoverSource} />
+                    </>
                 ) : (
                     <>
                         <div className="absolute inset-0 bg-gradient-to-br from-white via-stone-100 to-stone-200 dark:from-white/[.08] dark:via-white/[.025] dark:to-transparent" />
@@ -54,7 +60,7 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
                         </div>
                     </>
                 )}
-                {previewImage ? <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent" /> : null}
+                {projectCoverSource ? <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent" /> : null}
                 <input
                     type="checkbox"
                     checked={selected}
