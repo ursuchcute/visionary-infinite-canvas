@@ -98,10 +98,10 @@ export function ChannelEditorDrawer({ open, channel, onSave, onClose }: { open: 
                 </Button>
             </div>
 
-            <div className="space-y-2 rounded-lg border border-stone-200 p-2 dark:border-stone-800">
+            <div className="space-y-2 rounded-2xl border border-[var(--visionary-border)] bg-[var(--visionary-surface)] p-2">
                 {draft.models.length ? (
                     draft.models.map((model) => (
-                        <div key={model.name} className="flex flex-wrap items-center gap-3 rounded-md px-2 py-1.5 hover:bg-stone-50 dark:hover:bg-stone-900/40">
+                        <div key={model.name} className="flex flex-wrap items-center gap-3 rounded-xl px-2 py-1.5 hover:bg-[var(--visionary-surface-hover)]">
                             <span className="min-w-0 flex-1 truncate text-sm" title={model.name}>
                                 {model.name}
                             </span>

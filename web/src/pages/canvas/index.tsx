@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { App, Button } from "antd";
-import { Download, FileUp, Plus } from "lucide-react";
+import { Download, FileUp, Plus, Sparkles } from "lucide-react";
 
 import { readZip } from "@/lib/zip";
 import { setMediaBlob } from "@/services/file-storage";
@@ -68,54 +68,51 @@ export default function CanvasPage() {
 
     if (hydrated && (mode === "new" || mode === "recent")) return <main className="flex h-full items-center justify-center bg-background text-sm text-stone-500">正在打开画布...</main>;
 
+    const secondaryButtonClass = "!h-11 !rounded-2xl !border-stone-300/80 !bg-white/75 !px-4 !text-stone-700 !shadow-none backdrop-blur transition hover:!border-stone-400 hover:!bg-white dark:!border-white/10 dark:!bg-white/[.04] dark:!text-stone-200 dark:hover:!border-white/20 dark:hover:!bg-white/[.08]";
+    const primaryButtonClass = "!h-11 !rounded-2xl !border-stone-950 !bg-stone-950 !px-5 !font-medium !text-white !shadow-[0_0_24px_rgba(0,0,0,.10)] hover:!border-stone-700 hover:!bg-stone-800 dark:!border-white dark:!bg-white dark:!text-black dark:!shadow-[0_0_24px_rgba(255,255,255,.10)] dark:hover:!border-stone-200 dark:hover:!bg-stone-200";
+
     return (
-        <main className="h-full overflow-auto bg-background text-stone-950 dark:text-stone-100">
-            <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-10">
-                <header className="flex flex-wrap items-end justify-between gap-4 border-b border-stone-200 pb-6 dark:border-stone-800">
-                    <div>
-                        <p className="text-xs text-stone-500">画布库</p>
-                        <h1 className="mt-3 text-3xl font-semibold">{APP_SHORT_NAME}</h1>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        {selectedIds.length ? (
-                            <>
-                                <Button disabled={!hydrated} icon={<Download className="size-4" />} onClick={() => void exportCanvasProjects(projects.filter((project) => selectedIds.includes(project.id)), `${APP_SHORT_NAME}-${selectedIds.length}个项目`)}>
-                                    导出选中
-                                </Button>
-                                <Button disabled={!hydrated} onClick={() => setDeleteIds(selectedIds)}>
-                                    删除选中
-                                </Button>
-                            </>
-                        ) : null}
-                        {projects.length ? (
-                            <Button disabled={!hydrated} onClick={() => setDeleteIds(projects.map((project) => project.id))}>
-                                删除全部
+        <main className="relative isolate h-full overflow-auto bg-[#f5f5f3] text-stone-950 dark:bg-[#050505] dark:text-stone-100">
+            <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[520px] bg-[radial-gradient(circle_at_50%_-15%,rgba(59,130,246,.12),transparent_46%)] dark:bg-[radial-gradient(circle_at_50%_-15%,rgba(59,130,246,.16),transparent_46%)]" />
+            <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 py-6 lg:px-8">
+                <header className="flex flex-wrap items-center justify-end gap-2.5">
+                    {selectedIds.length ? (
+                        <>
+                            <Button className={secondaryButtonClass} disabled={!hydrated} icon={<Download className="size-4" />} onClick={() => void exportCanvasProjects(projects.filter((project) => selectedIds.includes(project.id)), `${APP_SHORT_NAME}-${selectedIds.length}个项目`)}>
+                                导出选中
                             </Button>
-                        ) : null}
-                        <Button disabled={!hydrated} icon={<FileUp className="size-4" />} onClick={() => inputRef.current?.click()}>
-                            导入画布
-                        </Button>
-                        <Button disabled={!hydrated} type="primary" icon={<Plus className="size-4" />} onClick={createAndEnter}>
-                            新建画布
-                        </Button>
-                    </div>
+                            <Button className={`${secondaryButtonClass} !text-red-500 dark:!text-red-400`} disabled={!hydrated} onClick={() => setDeleteIds(selectedIds)}>
+                                删除选中
+                            </Button>
+                        </>
+                    ) : null}
+                    <Button className={secondaryButtonClass} disabled={!hydrated} icon={<FileUp className="size-4" />} onClick={() => inputRef.current?.click()}>
+                        导入画布
+                    </Button>
+                    <Button className={primaryButtonClass} disabled={!hydrated} icon={<Plus className="size-4" />} onClick={createAndEnter}>
+                        新建画布
+                    </Button>
                 </header>
 
                 {!hydrated ? (
-                    <section className="flex min-h-[360px] items-center justify-center border-y border-stone-200 text-sm text-stone-500 dark:border-stone-800">正在加载画布...</section>
+                    <section className="flex min-h-[380px] items-center justify-center rounded-[28px] border border-black/[.08] bg-white/70 text-sm text-stone-500 shadow-[0_10px_40px_rgba(0,0,0,.06)] backdrop-blur dark:border-white/[.08] dark:bg-white/[.03] dark:shadow-[0_10px_40px_rgba(0,0,0,.25)]">正在加载画布...</section>
                 ) : projects.length ? (
-                    <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+                    <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                         {projects.map((project) => (
                             <CanvasProjectCard key={project.id} project={project} />
                         ))}
                     </div>
                 ) : (
-                    <section className="flex min-h-[360px] flex-col items-center justify-center border-y border-stone-200 text-center dark:border-stone-800">
-                        <h2 className="text-xl font-medium">还没有画布</h2>
-                        <p className="mt-3 text-sm text-stone-500">新建一个画布后，就可以独立保存节点、连线和画布外观。</p>
-                        <Button type="primary" className="mt-6" icon={<Plus className="size-4" />} onClick={createAndEnter}>
-                            新建画布
-                        </Button>
+                    <section className="relative flex min-h-[420px] overflow-hidden rounded-[28px] border border-black/[.08] bg-white/70 shadow-[0_10px_40px_rgba(0,0,0,.06)] backdrop-blur dark:border-white/[.08] dark:bg-white/[.03] dark:shadow-[0_10px_40px_rgba(0,0,0,.25)]">
+                        <div aria-hidden className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(59,130,246,.10),transparent_34%)] dark:bg-[radial-gradient(circle_at_50%_35%,rgba(59,130,246,.12),transparent_34%)]" />
+                        <div className="relative m-auto flex max-w-lg flex-col items-center px-6 text-center">
+                            <span className="grid size-12 place-items-center rounded-2xl border border-stone-300/80 bg-white text-blue-500 shadow-sm dark:border-white/10 dark:bg-white/[.05]"><Sparkles className="size-5" /></span>
+                            <h2 className="mt-5 text-2xl font-semibold tracking-tight">开始第一张无限画布</h2>
+                            <p className="mt-3 text-sm leading-6 text-stone-500">新建画布后，可以自由连接图片、文本、配置与生成结果，并持续扩展您的创作过程。</p>
+                            <Button className={`${primaryButtonClass} mt-7`} icon={<Plus className="size-4" />} onClick={createAndEnter}>
+                                新建画布
+                            </Button>
+                        </div>
                     </section>
                 )}
             </div>

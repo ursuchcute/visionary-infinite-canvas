@@ -45,12 +45,12 @@ export default function PromptsPage() {
 
     const savePromptAsset = (item: Prompt) => {
         addAsset({ kind: "text", title: item.title, coverUrl: item.coverUrl, tags: item.tags, source: item.category, data: { content: item.prompt }, metadata: { source: "prompt-library", promptId: item.id, githubUrl: item.githubUrl } });
-        message.success("已加入我的资产");
+        message.success("已加入资产");
     };
 
-    const saveToMyPrompts = (item: Prompt) => {
+    const saveToFavorites = (item: Prompt) => {
         addPrompt(toPersonalInput(item));
-        message.success("已保存到我的提示词");
+        message.success("已收藏");
     };
 
     const openNewPrompt = () => {
@@ -79,13 +79,13 @@ export default function PromptsPage() {
     const visibleCount = activeTab === "library" ? totalPrompts : filteredPersonalPrompts.length;
 
     return (
-        <div className="flex h-full flex-col overflow-hidden bg-background text-stone-800 dark:text-stone-100">
-            <main className="min-h-0 flex-1 overflow-y-auto bg-background bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] px-6 py-8 [background-size:16px_16px] dark:bg-[radial-gradient(rgba(245,245,244,.16)_1px,transparent_1px)]" onScroll={handleListScroll}>
-                <div className="mx-auto max-w-7xl pb-8">
-                    <div className="flex flex-wrap items-end justify-between gap-4">
-                        <div>
-                            <h1 className="text-3xl font-semibold text-stone-950 dark:text-stone-100">提示词中心</h1>
-                            <p className="mt-2 text-sm text-stone-500 dark:text-stone-400">当前共 {visibleCount} 条提示词</p>
+        <div className="flex h-full flex-col overflow-hidden text-stone-800 dark:text-stone-100">
+            <main className="visionary-page min-h-0 flex-1 overflow-y-auto px-6 py-10" onScroll={handleListScroll}>
+                <div className="mx-auto max-w-7xl pb-6">
+                    <div className="flex flex-wrap items-start justify-between gap-5">
+                        <div className="min-w-0">
+                            <Tabs className="prompt-page-tabs" activeKey={activeTab} onChange={setActiveTab} items={[{ key: "library", label: "提示词库" }, { key: "personal", label: `收藏 (${personalPrompts.length})` }]} />
+                            <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">当前共 {visibleCount} 条提示词</p>
                         </div>
                         {activeTab === "personal" ? (
                             <Button type="primary" icon={<Plus className="size-4" />} onClick={openNewPrompt}>
@@ -93,53 +93,72 @@ export default function PromptsPage() {
                             </Button>
                         ) : null}
                     </div>
-                    <Tabs className="mt-5" activeKey={activeTab} onChange={setActiveTab} items={[{ key: "library", label: "提示词库" }, { key: "personal", label: `我的提示词 (${personalPrompts.length})` }]} />
-                    <div className="mx-auto mt-2 w-full max-w-2xl">
-                        <Input size="large" prefix={<Search className="size-4 text-stone-400" />} value={titleKeyword} placeholder="搜索标题、内容或标签" onChange={(event) => setTitleKeyword(event.target.value)} />
-                    </div>
-                    {activeTab === "library" ? (
-                        <div className="mx-auto mt-6 grid max-w-6xl gap-3 text-left">
-                            <PromptFilter label="分类" options={promptCategoryOptions} selected={selectedCategory} onChange={setSelectedCategory} />
-                            <div className="grid gap-2 sm:grid-cols-[56px_minmax(0,1fr)] sm:items-start">
-                                <div className="pt-2 text-xs font-medium text-stone-500 dark:text-stone-400">标签</div>
-                                <div className="flex flex-wrap gap-2">
-                                    {promptTags.map((tag) => {
-                                        const active = tag === ALL_PROMPTS_OPTION ? selectedTags.length === 0 : selectedTags.includes(tag);
-                                        return <Tag.CheckableTag key={tag} checked={active} className={cn("prompt-filter-tag", active && "is-active")} onChange={() => toggleTag(tag)}>{tag}</Tag.CheckableTag>;
-                                    })}
-                                </div>
-                            </div>
-                        </div>
-                    ) : null}
                 </div>
 
-                {activeTab === "library" && query.isLoading ? <div className="flex h-60 items-center justify-center"><Spin /></div> : null}
-                {activeTab === "library" && !query.isLoading ? (
-                    <PromptGrid items={promptItems} onOpen={setSelectedPrompt} renderActions={(item) => <><Button size="small" icon={<BookmarkPlus className="size-3.5" />} onClick={() => saveToMyPrompts(item)}>保存</Button><Tooltip title="加入我的资产"><Button type="text" size="small" icon={<FolderPlus className="size-3.5" />} onClick={() => savePromptAsset(item)} /></Tooltip></>} onCopy={(item) => copyText(item.prompt, "提示词已复制")} emptyText="没有找到匹配的提示词" />
+                {activeTab === "library" ? (
+                    <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start">
+                        <aside className="visionary-surface flex flex-col overflow-hidden p-5 lg:sticky lg:top-4">
+                            <div className="shrink-0">
+                                <div className="text-xs font-medium text-stone-500 dark:text-stone-400">搜索</div>
+                                <Input className="mt-2" prefix={<Search className="size-4 text-stone-400" />} value={titleKeyword} allowClear placeholder="标题、内容或标签" onChange={(event) => setTitleKeyword(event.target.value)} />
+                                <div className="mt-5">
+                                    <PromptFilter label="分类" options={promptCategoryOptions} selected={selectedCategory} onChange={setSelectedCategory} />
+                                </div>
+                            </div>
+                            <div className="mt-5 flex h-[404px] min-h-0 shrink-0 flex-col">
+                                <div className="mb-2 shrink-0 text-xs font-medium text-stone-500 dark:text-stone-400">标签</div>
+                                <div className="thin-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">
+                                    <div className="flex min-w-0 flex-wrap gap-2">
+                                        {promptTags.map((tag) => {
+                                            const active = tag === ALL_PROMPTS_OPTION ? selectedTags.length === 0 : selectedTags.includes(tag);
+                                            return <Tag.CheckableTag key={tag} checked={active} className={cn("prompt-filter-tag max-w-full break-all leading-5", active && "is-active")} style={{ whiteSpace: "normal", overflowWrap: "anywhere" }} onChange={() => toggleTag(tag)}>{tag}</Tag.CheckableTag>;
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        </aside>
+                        <section className="min-w-0">
+                            {query.isLoading ? <div className="flex h-60 items-center justify-center"><Spin /></div> : null}
+                            {!query.isLoading ? (
+                                <PromptGrid
+                                    items={promptItems}
+                                    onOpen={setSelectedPrompt}
+                                    renderActions={(item) => <><Button size="small" icon={<BookmarkPlus className="size-3.5" />} onClick={() => saveToFavorites(item)}>收藏</Button><Tooltip title="加入资产"><Button type="text" size="small" icon={<FolderPlus className="size-3.5" />} onClick={() => savePromptAsset(item)}>加入资产</Button></Tooltip></>}
+                                    onCopy={(item) => copyText(item.prompt, "提示词已复制")}
+                                    emptyText="没有找到匹配的提示词"
+                                />
+                            ) : null}
+                            <div className="mt-6 text-center text-xs text-stone-500 dark:text-stone-400">{query.isFetchingNextPage ? "加载中..." : query.hasNextPage ? "继续向下滚动加载更多" : promptItems.length > 0 ? "已经到底了" : null}</div>
+                        </section>
+                    </div>
                 ) : null}
                 {activeTab === "personal" ? (
-                    <PromptGrid
-                        items={personalItems}
-                        onOpen={setSelectedPrompt}
-                        onCopy={(item) => copyText(item.prompt, "提示词已复制")}
-                        renderActions={(item) => {
-                            const personal = personalPrompts.find((prompt) => prompt.id === item.id)!;
-                            return <Space size={0}><Tooltip title="编辑"><Button type="text" size="small" icon={<Pencil className="size-3.5" />} onClick={() => openEditPrompt(personal)} /></Tooltip><Popconfirm title="删除这条提示词？" okText="删除" cancelText="取消" onConfirm={() => removePrompt(item.id)}><Tooltip title="删除"><Button type="text" danger size="small" icon={<Trash2 className="size-3.5" />} /></Tooltip></Popconfirm></Space>;
-                        }}
-                        emptyText="还没有保存提示词"
-                    />
+                    <div className="mx-auto max-w-7xl">
+                        <div className="mx-auto mb-6 w-full max-w-2xl">
+                            <Input size="large" prefix={<Search className="size-4 text-stone-400" />} value={titleKeyword} allowClear placeholder="搜索收藏" onChange={(event) => setTitleKeyword(event.target.value)} />
+                        </div>
+                        <PromptGrid
+                            items={personalItems}
+                            onOpen={setSelectedPrompt}
+                            onCopy={(item) => copyText(item.prompt, "提示词已复制")}
+                            renderActions={(item) => {
+                                const personal = personalPrompts.find((prompt) => prompt.id === item.id)!;
+                                return <Space size={0}><Tooltip title="编辑"><Button type="text" size="small" icon={<Pencil className="size-3.5" />} onClick={() => openEditPrompt(personal)} /></Tooltip><Popconfirm title="删除这条收藏？" okText="删除" cancelText="取消" onConfirm={() => removePrompt(item.id)}><Tooltip title="删除"><Button type="text" danger size="small" icon={<Trash2 className="size-3.5" />} /></Tooltip></Popconfirm></Space>;
+                            }}
+                            emptyText="还没有收藏提示词"
+                        />
+                    </div>
                 ) : null}
-                {activeTab === "library" ? <div className="mx-auto mt-6 max-w-7xl text-center text-xs text-stone-500 dark:text-stone-400">{query.isFetchingNextPage ? "加载中..." : query.hasNextPage ? "继续向下滚动加载更多" : promptItems.length > 0 ? "已经到底了" : null}</div> : null}
             </main>
 
-            <PromptDetailDialog prompt={selectedPrompt} onClose={() => setSelectedPrompt(null)} onCopy={(prompt) => copyText(prompt, "提示词已复制")} onSaveAsset={selectedPrompt?.sourceId === "personal" ? undefined : savePromptAsset} onSavePrompt={selectedPrompt?.sourceId === "personal" ? undefined : saveToMyPrompts} />
+            <PromptDetailDialog prompt={selectedPrompt} onClose={() => setSelectedPrompt(null)} onCopy={(prompt) => copyText(prompt, "提示词已复制")} onSaveAsset={selectedPrompt?.sourceId === "personal" ? undefined : savePromptAsset} onSavePrompt={selectedPrompt?.sourceId === "personal" ? undefined : saveToFavorites} />
             <MyPromptEditorDialog open={editorOpen} prompt={editingPrompt} onSave={savePersonalPrompt} onClose={() => setEditorOpen(false)} />
         </div>
     );
 }
 
 function PromptFilter({ label, options, selected, onChange }: { label: string; options: string[]; selected: string; onChange: (value: string) => void }) {
-    return <div className="grid gap-2 sm:grid-cols-[56px_minmax(0,1fr)] sm:items-start"><div className="pt-2 text-xs font-medium text-stone-500 dark:text-stone-400">{label}</div><div className="flex flex-wrap gap-2">{options.map((option) => <Tag.CheckableTag key={option} checked={selected === option} className={cn("prompt-filter-tag", selected === option && "is-active")} onChange={() => onChange(option)}>{option}</Tag.CheckableTag>)}</div></div>;
+    return <div><div className="mb-2 text-xs font-medium text-stone-500 dark:text-stone-400">{label}</div><div className="flex min-w-0 flex-wrap gap-2 overflow-x-hidden">{options.map((option) => <Tag.CheckableTag key={option} checked={selected === option} className={cn("prompt-filter-tag max-w-full break-all leading-5", selected === option && "is-active")} style={{ whiteSpace: "normal", overflowWrap: "anywhere" }} onChange={() => onChange(option)}>{option}</Tag.CheckableTag>)}</div></div>;
 }
 
 function PromptGrid({ items, onOpen, onCopy, renderActions, emptyText }: { items: Prompt[]; onOpen: (item: Prompt) => void; onCopy: (item: Prompt) => void; renderActions: (item: Prompt) => ReactNode; emptyText: string }) {

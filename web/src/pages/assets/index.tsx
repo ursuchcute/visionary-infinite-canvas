@@ -1,4 +1,4 @@
-import { Copy, Download, PencilLine, Search, Trash2, Upload } from "lucide-react";
+import { Copy, Download, PencilLine, Plus, Search, Trash2, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { App, Button, Card, Drawer, Empty, Form, Image, Input, Modal, Pagination, Select, Space, Tag, Typography } from "antd";
 import { saveAs } from "file-saver";
@@ -186,15 +186,10 @@ export default function AssetsPage() {
     };
 
     return (
-        <div className="flex h-full flex-col overflow-hidden bg-background text-stone-900 dark:text-stone-100">
-            <main className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] px-6 py-8 [background-size:16px_16px] dark:bg-[radial-gradient(rgba(245,245,244,.14)_1px,transparent_1px)]">
-                <div className="pb-8">
-                    <div className="mx-auto max-w-5xl text-center">
-                        <h1 className="text-4xl font-semibold tracking-tight text-stone-950 dark:text-stone-100">我的资产</h1>
-                        <p className="mt-3 text-sm text-stone-500 dark:text-stone-400">收藏常用文本和图片，按类型、标题和标签快速查找。</p>
-                    </div>
-
-                    <div className="mx-auto mt-8 w-full max-w-2xl">
+        <div className="flex h-full flex-col overflow-hidden text-stone-900 dark:text-stone-100">
+            <main className="visionary-page min-h-0 flex-1 overflow-y-auto px-6 py-10">
+                <div className="pb-6">
+                    <div className="mx-auto w-full max-w-2xl">
                         <Input.Search
                             className="w-full"
                             size="large"
@@ -213,7 +208,7 @@ export default function AssetsPage() {
                         />
                     </div>
 
-                    <div className="mx-auto mt-6 grid max-w-6xl gap-3 text-left">
+                    <div className="visionary-surface mx-auto mt-6 grid max-w-6xl gap-3 p-4 text-left sm:p-5">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div className="grid gap-2 sm:grid-cols-[56px_minmax(0,1fr)] sm:items-center">
                                 <div className="text-xs font-medium text-stone-500 dark:text-stone-400">类型</div>
@@ -233,28 +228,16 @@ export default function AssetsPage() {
                                     ))}
                                 </div>
                             </div>
-                            <div className="flex flex-wrap gap-4">
-                                <button
-                                    type="button"
-                                    className="cursor-pointer text-sm font-medium text-stone-700 underline-offset-4 hover:underline focus-visible:outline-none focus-visible:underline dark:text-stone-300"
-                                    onClick={() => void exportAllAssets()}
-                                >
+                            <div className="flex flex-wrap gap-2">
+                                <Button icon={<Download className="size-4" />} onClick={() => void exportAllAssets()}>
                                     导出资产
-                                </button>
-                                <button
-                                    type="button"
-                                    className="cursor-pointer text-sm font-medium text-stone-700 underline-offset-4 hover:underline focus-visible:outline-none focus-visible:underline dark:text-stone-300"
-                                    onClick={() => assetInputRef.current?.click()}
-                                >
+                                </Button>
+                                <Button icon={<Upload className="size-4" />} onClick={() => assetInputRef.current?.click()}>
                                     导入资产
-                                </button>
-                                <button
-                                    type="button"
-                                    className="cursor-pointer text-sm font-medium text-stone-700 underline-offset-4 hover:underline focus-visible:outline-none focus-visible:underline dark:text-stone-300"
-                                    onClick={openCreate}
-                                >
+                                </Button>
+                                <Button type="primary" icon={<Plus className="size-4" />} onClick={openCreate}>
                                     新增资产
-                                </button>
+                                </Button>
                             </div>
                         </div>
                     </div>

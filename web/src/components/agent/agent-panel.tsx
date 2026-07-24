@@ -53,14 +53,14 @@ export function AgentPanel() {
             style={{ overflow: "clip", pointerEvents: panelClosing ? "none" : undefined }}
         >
             <motion.aside
-                className="relative flex h-full shrink-0 flex-col border-l"
+                className="relative flex h-full shrink-0 flex-col border-l backdrop-blur-2xl"
                 initial={{ x: 48 }}
                 animate={{ x: panelClosing ? 28 : 0 }}
                 transition={{ duration: resizing ? 0 : PANEL_MOTION_SECONDS, ease: [0.22, 1, 0.36, 1] }}
-                style={{ width, background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
+                style={{ width, background: "var(--visionary-surface-solid)", borderColor: "var(--visionary-border)", color: "var(--foreground)" }}
             >
                 <button type="button" className="absolute inset-y-0 left-0 z-40 w-4 -translate-x-1/2 cursor-col-resize" onPointerDown={startResize} aria-label="调整右侧面板宽度" />
-                <header className="flex h-14 shrink-0 items-center justify-between border-b px-4" style={{ borderColor: theme.node.stroke }}>
+                <header className="flex h-16 shrink-0 items-center justify-between border-b px-4" style={{ borderColor: "var(--visionary-border)" }}>
                     <div className="flex min-w-0 items-center gap-2">
                         <span className="grid size-8 place-items-center rounded-lg">
                             <Bot className="size-4" />

@@ -3,6 +3,12 @@ import { theme as antdTheme } from "antd";
 
 const neutral = {
     light: {
+        page: "#f5f5f3",
+        container: "#ffffff",
+        elevated: "#ffffff",
+        border: "rgba(28, 25, 23, 0.10)",
+        text: "#171717",
+        mutedText: "#737373",
         primary: "#171717",
         primaryHover: "#000000",
         primaryText: "#ffffff",
@@ -15,6 +21,12 @@ const neutral = {
         tableSelectedHoverBg: "rgba(17, 17, 17, 0.08)",
     },
     dark: {
+        page: "#050505",
+        container: "#0d0d0d",
+        elevated: "#111111",
+        border: "rgba(255, 255, 255, 0.10)",
+        text: "#fafafa",
+        mutedText: "#a3a3a3",
         primary: "#fafafa",
         primaryHover: "#ffffff",
         primaryText: "#171717",
@@ -35,12 +47,27 @@ export function getAntThemeConfig(dark: boolean): ThemeConfig {
         algorithm: dark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
         cssVar: { key: dark ? "infinite-canvas-dark" : "infinite-canvas-light" },
         token: {
+            colorBgBase: color.page,
+            colorBgContainer: color.container,
+            colorBgElevated: color.elevated,
+            colorBorder: color.border,
+            colorBorderSecondary: color.border,
             colorPrimary: color.primary,
             colorInfo: color.primary,
             colorLink: color.primary,
             colorLinkHover: color.primaryHover,
             colorLinkActive: color.primary,
             colorTextLightSolid: color.primaryText,
+            colorText: color.text,
+            colorTextSecondary: color.mutedText,
+            borderRadius: 12,
+            borderRadiusLG: 20,
+            borderRadiusSM: 10,
+            controlHeight: 38,
+            controlHeightLG: 44,
+            fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+            boxShadow: "0 10px 40px rgba(0, 0, 0, 0.12)",
+            boxShadowSecondary: "0 18px 56px rgba(0, 0, 0, 0.20)",
         },
         components: {
             Button: {

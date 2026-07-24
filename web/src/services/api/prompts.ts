@@ -12,7 +12,7 @@ export type Prompt = RawPrompt & {
 };
 
 export const ALL_PROMPTS_OPTION = "全部";
-export const PERSONAL_PROMPTS_CATEGORY = "我的提示词";
+export const PERSONAL_PROMPTS_CATEGORY = "收藏";
 
 export type PromptListResponse = {
     items: Prompt[];

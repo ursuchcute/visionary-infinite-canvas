@@ -154,6 +154,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
     return (
         <>
             <Tabs
+                className="visionary-tabs"
                 activeKey={activeTab}
                 onChange={(key) => setActiveTab(key as ConfigTabKey)}
                 items={[
@@ -170,7 +171,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                 </div>
                                 <div className="space-y-2">
                                     {config.channels.map((channel) => (
-                                        <div key={channel.id} className="flex items-center justify-between gap-3 rounded-lg border border-stone-200 px-4 py-3 dark:border-stone-800">
+                                        <div key={channel.id} className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--visionary-border)] bg-[var(--visionary-surface)] px-4 py-3">
                                             <div className="min-w-0">
                                                 <div className="truncate text-sm font-semibold">{channel.name || "未命名渠道"}</div>
                                                 <div className="mt-1 truncate text-xs text-stone-500">
@@ -251,7 +252,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                         label: "WebDAV",
                         children: (
                             <Form layout="vertical" requiredMark={false}>
-                                <section className="rounded-lg border border-stone-200 p-3 dark:border-stone-800">
+                                <section className="rounded-2xl border border-[var(--visionary-border)] bg-[var(--visionary-surface)] p-4">
                                     <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                                         <div>
                                             <div className="flex items-center gap-2 text-sm font-semibold">
@@ -371,7 +372,7 @@ function WebdavProgressGrid({ progress }: { progress: Record<AppSyncDomainKey, W
                 const item = progress[key];
                 const count = item.total ? `${item.current || 0}/${item.total}` : "";
                 return (
-                    <div key={key} className="rounded-md border border-stone-200 px-3 py-2 dark:border-stone-800">
+                    <div key={key} className="rounded-xl border border-[var(--visionary-border)] bg-[var(--visionary-surface)] px-3 py-2">
                         <div className="mb-1 flex min-w-0 items-center justify-between gap-3 text-xs">
                             <span className="shrink-0 font-medium text-stone-700 dark:text-stone-200">{item.label}</span>
                             <span className="min-w-0 truncate text-right text-stone-500">

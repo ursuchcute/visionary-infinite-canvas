@@ -508,15 +508,25 @@ function InfiniteCanvasPage() {
                 return;
             }
             const autoReference =
-                type === CanvasNodeType.Image && connection.toNodeId === newNode.id
-                    ? buildNodeMentionReferences(newNode, [...nodesRef.current, newNode], [{ id: "pending", ...connection }]).find((reference) => reference.kind === "image" && reference.nodeId === connection.fromNodeId)
+                connection.toNodeId === newNode.id
+                    ? buildNodeMentionReferences(newNode, [...nodesRef.current, newNode], [{ id: "pending", ...connection }]).find(
+                          (reference) => reference.nodeId === connection.fromNodeId && (reference.kind === "text" || (type === CanvasNodeType.Image && reference.kind === "image")),
+                      )
                     : undefined;
-            const connectedNode = autoReference ? { ...newNode, metadata: { ...newNode.metadata, prompt: `${autoReference.label} ` } } : newNode;
+            const connectedNode = autoReference
+                ? {
+                      ...newNode,
+                      metadata: {
+                          ...newNode.metadata,
+                          ...(type === CanvasNodeType.Config ? { composerContent: `@[node:${autoReference.nodeId}] ` } : { prompt: `${autoReference.label} ` }),
+                      },
+                  }
+                : newNode;
             setNodes((prev) => [...prev, connectedNode]);
             setConnections((prev) => [...prev, { id: nanoid(), ...connection }]);
             setSelectedNodeIds(new Set([newNode.id]));
             setSelectedConnectionId(null);
-            if (type !== CanvasNodeType.Text && type !== CanvasNodeType.Audio) setDialogNodeId(newNode.id);
+            if (type !== CanvasNodeType.Audio) setDialogNodeId(newNode.id);
             setPendingConnectionCreate(null);
             setConnecting(null);
         },
@@ -686,7 +696,8 @@ function InfiniteCanvasPage() {
     });
     const createNode = useCallback(
         (type: CanvasNodeTypeId, position?: Position) => {
-            const targetPosition = position || getCanvasCenter();
+            const center = position || getCanvasCenter();
+            const targetPosition = !position && type === CanvasNodeType.Text ? { ...center, y: center.y - 70 / Math.max(viewportRef.current.k, 0.05) } : center;
             const configMetadata =
                 type === CanvasNodeType.Config
                     ? {
@@ -703,14 +714,14 @@ function InfiniteCanvasPage() {
             const definition = getNodeDefinition(type);
             // 纯展示型插件节点(hidePanel)不弹面板;插件自定义 Panel 需显式 autoOpenPanel 才在新建时打开;
             // 声明了 useBuiltinPanel 的插件节点复用内置生成面板,新建即打开(与图片节点一致);
-            // 内置的图片/视频/配置类节点保持原有「新建即打开生图面板」行为。
+            // 内置的文本/图片/视频/配置节点新建后直接打开对应生成面板。
             const wantsPanel = definition?.hidePanel
                 ? false
                 : definition?.Panel
                   ? Boolean(definition.autoOpenPanel)
                   : definition?.useBuiltinPanel
                     ? true
-                    : isBuiltinType(type) && type !== CanvasNodeType.Text && type !== CanvasNodeType.Audio && type !== CanvasNodeType.Group;
+                    : isBuiltinType(type) && type !== CanvasNodeType.Audio && type !== CanvasNodeType.Group;
             if (wantsPanel) setDialogNodeId(newNode.id);
         },
         [effectiveConfig.canvasImageCount, effectiveConfig.count, effectiveConfig.imageModel, effectiveConfig.model, effectiveConfig.size, getCanvasCenter],
@@ -1055,13 +1066,14 @@ function InfiniteCanvasPage() {
     const handleNodeSelectCapture = useCallback(
         (event: ReactMouseEvent, nodeId: string) => {
             if (event.button !== 0) return;
+            if (pendingConnectionCreateRef.current) cancelPendingConnectionCreate();
             setContextMenu(null);
             setHoveredNodeId(null);
             setSelectedConnectionId(null);
             const { nextSelected } = selectNodeByEvent(event, nodeId);
             pendingSelectionRef.current = nextSelected;
         },
-        [selectNodeByEvent],
+        [cancelPendingConnectionCreate, selectNodeByEvent],
     );
 
     const handleNodeMouseDown = useCallback((event: ReactMouseEvent, nodeId: string) => {
@@ -1135,7 +1147,7 @@ function InfiniteCanvasPage() {
             const clickedNode = nodesRef.current.find((node) => node.id === clickedNodeId);
             const clickedDefinition = clickedNode ? getNodeDefinition(clickedNode.type) : undefined;
             if (clickedNode?.type === CanvasNodeType.Text) {
-                setDialogNodeId((current) => (current === clickedNodeId ? current : null));
+                setDialogNodeId(clickedNodeId);
             } else if (clickedDefinition?.hidePanel) {
                 // 纯展示型插件节点:单击只选中,不弹下方面板
                 setDialogNodeId((current) => (current === clickedNodeId ? current : null));
@@ -1446,6 +1458,7 @@ function InfiniteCanvasPage() {
             connectionTargetNodeIdRef.current = null;
             setConnectionTargetNodeId(null);
             setSelectedConnectionId(null);
+            setToolbarNodeId(null);
         },
         [screenToCanvas, setConnecting],
     );
@@ -1608,7 +1621,7 @@ function InfiniteCanvasPage() {
             const configSpec = NODE_DEFAULT_SIZE[CanvasNodeType.Config];
             const centerY = node.position.y + node.height / 2;
             const textNode = {
-                ...createCanvasNode(CanvasNodeType.Text, { x: node.position.x + node.width + gap + textSpec.width / 2, y: centerY }, { content: IMAGE_PROMPT_REVERSE_PRESET, prompt: IMAGE_PROMPT_REVERSE_PRESET, status: NODE_STATUS_SUCCESS, fontSize: 14 }),
+                ...createCanvasNode(CanvasNodeType.Text, { x: node.position.x + node.width + gap + textSpec.width / 2, y: centerY }, { content: IMAGE_PROMPT_REVERSE_PRESET, prompt: IMAGE_PROMPT_REVERSE_PRESET, status: NODE_STATUS_SUCCESS, fontSize: 18 }),
                 title: "反推提示词",
             };
             const configNode = {
@@ -2120,7 +2133,7 @@ function InfiniteCanvasPage() {
                                               title: prompt.slice(0, 32) || "Prompt",
                                               width: parentConfig.width,
                                               height: parentConfig.height,
-                                              metadata: { ...node.metadata, content: prompt, prompt, status: NODE_STATUS_SUCCESS, fontSize: 14, errorDetails: undefined },
+                                              metadata: { ...node.metadata, content: prompt, prompt, status: NODE_STATUS_SUCCESS, fontSize: 18, errorDetails: undefined },
                                           }
                                 : node,
                         ),
@@ -2320,7 +2333,7 @@ function InfiniteCanvasPage() {
                         },
                         width: textConfig.width,
                         height: textConfig.height,
-                        metadata: { prompt: effectivePrompt, status: NODE_STATUS_LOADING, fontSize: 14 },
+                        metadata: { prompt: effectivePrompt, status: NODE_STATUS_LOADING, fontSize: 18 },
                     }));
                     setNodes((prev) => [...prev.map((node) => (node.id === nodeId && isConfigNode ? { ...node, metadata: { ...node.metadata, prompt: effectivePrompt, status: NODE_STATUS_LOADING, errorDetails: undefined } } : node)), ...childNodes]);
                     setConnections((prev) => [...prev, ...childIds.map((childId) => ({ id: nanoid(), fromNodeId: nodeId, toNodeId: childId }))]);
@@ -2825,7 +2838,7 @@ function InfiniteCanvasPage() {
 
                 {panelNode && panelNode.type !== CanvasNodeType.Group && !getNodeDefinition(panelNode.type)?.hidePanel ? (
                     <div
-                        className="absolute z-[70] w-[600px] -translate-x-1/2 pt-4"
+                        className={`absolute z-[70] max-w-[calc(100vw-32px)] -translate-x-1/2 pt-4 ${panelNode.type === CanvasNodeType.Text ? "w-[640px]" : "w-[600px]"}`}
                         style={{ left: viewport.x + (panelNode.position.x + panelNode.width / 2) * viewport.k, top: viewport.y + (panelNode.position.y + panelNode.height) * viewport.k }}
                     >
                         {renderNodePanel(panelNode)}
@@ -2833,17 +2846,16 @@ function InfiniteCanvasPage() {
                 ) : null}
 
                 <CanvasNodeHoverToolbar
-                    node={isNodeDragging || nodeImageSettingsOpen ? null : toolbarNode}
+                    node={isNodeDragging || nodeImageSettingsOpen || connectingParams || pendingConnectionCreate ? null : toolbarNode}
                     viewport={viewport}
                     extraTools={toolbarNode ? buildNodeToolbarItems(toolbarNode) : undefined}
                     onKeep={keepNodeToolbar}
                     onLeave={hideNodeToolbar}
                     onInfo={(node) => setInfoNodeId(node.id)}
                     onEditText={openTextEditor}
-                    onDecreaseFont={(node) => handleFontSizeChange(node.id, Math.max(10, (node.metadata?.fontSize || 14) - 2))}
-                    onIncreaseFont={(node) => handleFontSizeChange(node.id, Math.min(32, (node.metadata?.fontSize || 14) + 2))}
+                    onDecreaseFont={(node) => handleFontSizeChange(node.id, Math.max(10, (node.metadata?.fontSize || 18) - 2))}
+                    onIncreaseFont={(node) => handleFontSizeChange(node.id, Math.min(32, (node.metadata?.fontSize || 18) + 2))}
                     onToggleDialog={(node) => setDialogNodeId((current) => (current === node.id ? null : node.id))}
-                    onGenerateImage={generateImageFromTextNode}
                     onUpload={(node) => handleUploadRequest(node.id)}
                     onDownload={downloadNodeImage}
                     onSaveAsset={(node) => void saveNodeAsset(node)}

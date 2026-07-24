@@ -531,13 +531,13 @@ function PersonalPromptGroup({ items, keyword, open, theme, onToggle, onInsert, 
             <button type="button" onClick={onToggle} className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1.5 text-left text-xs font-semibold opacity-75 transition hover:opacity-100">
                 <ChevronRight className={cn("size-3.5 transition-transform", showResults && "rotate-90")} />
                 <BookOpen className="size-3.5" />
-                <span className="min-w-0 flex-1 truncate">我的提示词</span>
+                <span className="min-w-0 flex-1 truncate">收藏</span>
                 <span className="opacity-50">{filtered.length}</span>
             </button>
             {showResults ? (
                 <div className="space-y-1.5 px-1 pb-2 pt-1">
                     {filtered.map((item) => <PromptRow key={item.id} item={item} theme={theme} onInsert={() => onInsert({ kind: "text", content: item.prompt, title: item.title })} onView={() => onView(item)} />)}
-                    {!filtered.length ? <div className="py-4 text-center text-xs opacity-40">{keyword.trim() ? "无匹配提示词" : "还没有保存提示词"}</div> : null}
+                    {!filtered.length ? <div className="py-4 text-center text-xs opacity-40">{keyword.trim() ? "无匹配提示词" : "还没有收藏提示词"}</div> : null}
                 </div>
             ) : null}
         </div>

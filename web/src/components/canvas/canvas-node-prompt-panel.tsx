@@ -55,6 +55,53 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
         onGenerate(node.id, mode, text);
     };
 
+    if (mode === "text") {
+        return (
+            <div
+                data-text-node-prompt-panel
+                className="rounded-[22px] border p-3 shadow-2xl backdrop-blur"
+                style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
+                onMouseDown={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
+                onWheel={(event) => event.stopPropagation()}
+            >
+                <CanvasPromptLibrary onSelect={updatePrompt} variant="add" />
+                <CanvasPromptChipInput
+                    value={prompt}
+                    references={mentionReferences}
+                    onChange={updatePrompt}
+                    onSubmit={submit}
+                    className="thin-scrollbar mt-1 h-16 w-full cursor-text resize-none px-1 py-2 text-[15px] leading-6 outline-none"
+                    style={{ background: "transparent", color: theme.node.text }}
+                    placeholder={promptPlaceholder(mode, hasImageContent, hasTextContent)}
+                />
+                <div className="mt-1 flex min-w-0 items-center justify-between gap-3">
+                    <ModelPicker
+                        config={config}
+                        value={config.model}
+                        onChange={(model) => onConfigChange(node.id, { model })}
+                        capability="text"
+                        onMissingConfig={() => openConfigDialog(true)}
+                        className="!h-9 !min-w-0 !max-w-[260px] !border-0 !bg-transparent !px-1 !shadow-none"
+                    />
+                    <div className="flex shrink-0 items-center gap-3">
+                        <span className="text-sm font-medium opacity-60">1×</span>
+                        <Button
+                            type="primary"
+                            className="!size-10 !min-w-10 shrink-0 !rounded-full !p-0"
+                            danger={isRunning}
+                            disabled={!isRunning && !prompt.trim()}
+                            onClick={() => (isRunning ? onStop(node.id) : submit())}
+                            aria-label={isRunning ? "停止生成" : "生成"}
+                        >
+                            {isRunning ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUp className="size-5" />}
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div
             className="rounded-2xl border p-3 shadow-2xl backdrop-blur"

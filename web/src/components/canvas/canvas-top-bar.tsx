@@ -1,11 +1,10 @@
 import { useState } from "react";
-import { BookOpen, Bot, ChevronsDown, ChevronsUp, Download, Home, Upload } from "lucide-react";
+import { Bot, ChevronsDown, ChevronsUp, Download, Home, Upload } from "lucide-react";
 import { Modal } from "antd";
 
 import { UserStatusActions } from "@/components/layout/user-status-actions";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
-import { DOCS_URL } from "@/constant/env";
 
 const CANVAS_HEADER_COLLAPSED_KEY = "canvas-header-toolbar-collapsed";
 
@@ -51,9 +50,6 @@ export function CanvasTopBar({
                                 <button type="button" className={actionClass} onClick={onHome}>
                                     <Home />主页
                                 </button>
-                                <a href={DOCS_URL} target="_blank" rel="noopener noreferrer" className={actionClass}>
-                                    <BookOpen />文档
-                                </a>
                                 <span className="mx-0.5 h-4 w-px shrink-0 xl:h-5" style={{ background: theme.toolbar.border }} />
                                 <button type="button" className={actionClass} onClick={onImportImage}>
                                     <Upload />导入资产

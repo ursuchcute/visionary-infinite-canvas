@@ -30,14 +30,14 @@ export function PromptDetailDialog({ prompt, onClose, onCopy, onSaveAsset, onSav
                                     <Button type="primary" icon={<Copy className="size-4" />} onClick={() => onCopy(prompt.prompt)}>
                                         复制提示词
                                     </Button>
-                                    {onSaveAsset ? (
-                                        <Button icon={<FolderPlus className="size-4" />} onClick={() => onSaveAsset(prompt)}>
-                                            加入我的资产
-                                        </Button>
-                                    ) : null}
                                     {onSavePrompt ? (
                                         <Button icon={<BookmarkPlus className="size-4" />} onClick={() => onSavePrompt(prompt)}>
-                                            保存到我的提示词
+                                            收藏
+                                        </Button>
+                                    ) : null}
+                                    {onSaveAsset ? (
+                                        <Button icon={<FolderPlus className="size-4" />} onClick={() => onSaveAsset(prompt)}>
+                                            加入资产
                                         </Button>
                                     ) : null}
                                 </Space>

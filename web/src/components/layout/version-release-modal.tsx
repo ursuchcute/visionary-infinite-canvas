@@ -39,11 +39,11 @@ export function VersionReleaseModal({ className, style }: VersionReleaseModalPro
             </button>
             <Modal title="版本更新" open={open} width={680} centered footer={null} onCancel={() => setOpen(false)}>
                 <div className="mb-5 grid grid-cols-2 gap-3">
-                    <div className="rounded-lg border border-stone-200 p-3 dark:border-stone-800">
+                    <div className="rounded-2xl border border-[var(--visionary-border)] bg-[var(--visionary-surface)] p-4">
                         <div className="text-xs text-stone-500 dark:text-stone-400">当前版本</div>
                         <div className="mt-1 text-base font-semibold text-stone-950 dark:text-stone-100">{APP_VERSION}</div>
                     </div>
-                    <div className="rounded-lg border border-stone-200 p-3 dark:border-stone-800">
+                    <div className="rounded-2xl border border-[var(--visionary-border)] bg-[var(--visionary-surface)] p-4">
                         <div className="flex items-center justify-between gap-3">
                             <div className="text-xs text-stone-500 dark:text-stone-400">最新版本</div>
                             <button

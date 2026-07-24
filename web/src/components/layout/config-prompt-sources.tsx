@@ -45,7 +45,7 @@ export function ConfigPromptSources() {
     const handleDelete = (source: PromptSource) => {
         modal.confirm({
             title: `删除「${source.name}」？`,
-            content: "来源配置会被移除，已经保存到我的提示词的内容不受影响。",
+            content: "来源配置会被移除，已经收藏的内容不受影响。",
             okText: "删除",
             okButtonProps: { danger: true },
             cancelText: "取消",
@@ -97,7 +97,7 @@ export function ConfigPromptSources() {
                 {sources.map((source) => {
                     const status = statusQuery.data?.[source.id];
                     return (
-                        <div key={source.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-stone-200 px-4 py-3 dark:border-stone-800">
+                        <div key={source.id} className="flex flex-wrap items-center gap-3 rounded-2xl border border-[var(--visionary-border)] bg-[var(--visionary-surface)] px-4 py-3">
                             <Switch size="small" checked={source.enabled} onChange={(checked) => { toggleSource(source.id, checked); void invalidatePrompts(); }} />
                             <div className="min-w-[220px] flex-1">
                                 <div className="flex min-w-0 items-center gap-2">
@@ -128,7 +128,7 @@ export function ConfigPromptSources() {
                 })}
             </div>
 
-            <section className="mt-5 rounded-lg border border-stone-200 p-4 dark:border-stone-800">
+            <section className="mt-5 rounded-2xl border border-[var(--visionary-border)] bg-[var(--visionary-surface)] p-4">
                 <div className="mb-3 text-sm font-semibold">定时拉取</div>
                 <div className="flex flex-wrap items-center gap-3">
                     <div className="flex items-center gap-2">
