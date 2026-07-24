@@ -1,17 +1,24 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Menu } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
 import { LazyAppConfigModal } from "@/components/layout/lazy-app-config-modal";
-import { MobileNavDrawer } from "@/components/layout/mobile-nav-drawer";
 import { UserStatusActions } from "@/components/layout/user-status-actions";
 import { navigationTools, type NavigationToolSlug } from "@/constant/navigation-tools";
 import { cn } from "@/lib/utils";
 import { useAgentStore } from "@/stores/use-agent-store";
 
+const loadMobileNavDrawer = () =>
+    import("@/components/layout/mobile-nav-drawer").then((module) => ({
+        default: module.MobileNavDrawer,
+    }));
+const MobileNavDrawer = lazy(loadMobileNavDrawer);
+const preloadMobileNavDrawer = () => void loadMobileNavDrawer().catch(() => undefined);
+
 export function AppTopNav() {
     const { pathname } = useLocation();
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
+    const [mobileNavMounted, setMobileNavMounted] = useState(false);
     const autoConnectRef = useRef(false);
     const agentToken = useAgentStore((state) => state.token);
     const agentEnabled = useAgentStore((state) => state.enabled);
@@ -26,6 +33,11 @@ export function AppTopNav() {
         autoConnectRef.current = true;
         connectAgent({ silent: true });
     }, [agentConnected, agentEnabled, agentToken, connectAgent]);
+
+    const openMobileNav = () => {
+        setMobileNavMounted(true);
+        setMobileNavOpen(true);
+    };
 
     return (
         <>
@@ -42,7 +54,9 @@ export function AppTopNav() {
                             <button
                                 type="button"
                                 className="ml-3 inline-flex size-8 shrink-0 items-center justify-center text-stone-600 transition hover:text-stone-950 lg:hidden dark:text-stone-300 dark:hover:text-white"
-                                onClick={() => setMobileNavOpen(true)}
+                                onClick={openMobileNav}
+                                onFocus={preloadMobileNavDrawer}
+                                onPointerEnter={preloadMobileNavDrawer}
                                 aria-label="打开导航菜单"
                                 title="导航菜单"
                             >
@@ -75,7 +89,19 @@ export function AppTopNav() {
                 </header>
             ) : null}
 
-            <MobileNavDrawer open={mobileNavOpen} activeToolSlug={activeToolSlug} onClose={() => setMobileNavOpen(false)} />
+            {mobileNavMounted ? (
+                <Suspense
+                    fallback={
+                        mobileNavOpen ? (
+                            <div className="fixed inset-y-0 left-0 z-[1000] grid w-[280px] place-items-center border-r border-[var(--visionary-border)] bg-[var(--visionary-surface-solid)] text-sm shadow-xl" role="status" aria-live="polite">
+                                正在加载导航…
+                            </div>
+                        ) : null
+                    }
+                >
+                    <MobileNavDrawer open={mobileNavOpen} activeToolSlug={activeToolSlug} onClose={() => setMobileNavOpen(false)} />
+                </Suspense>
+            ) : null}
             <LazyAppConfigModal />
         </>
     );
