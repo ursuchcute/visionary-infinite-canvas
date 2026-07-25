@@ -39,7 +39,7 @@ export function AppTopNav() {
                             <House className="size-4" />
                         </Link>
                         <div className="flex h-9 min-w-0 items-center justify-end gap-1 whitespace-nowrap">
-                            <div className="inline-flex shrink-0 items-center gap-1" aria-label="主要页面">
+                            <div className="inline-flex shrink-0 items-center gap-0.5 rounded-xl bg-stone-100 p-0.5 dark:bg-white/[.06]" aria-label="主要页面">
                                 {navigationTools.map((tool) => {
                                     const Icon = tool.icon;
                                     const active = tool.slug === activeToolSlug;
@@ -49,9 +49,7 @@ export function AppTopNav() {
                                             to={`/${tool.slug}`}
                                             className={cn(
                                                 "inline-flex h-8 shrink-0 items-center justify-center gap-2 rounded-lg px-2 text-[14px] font-medium leading-5 transition sm:px-2.5",
-                                                active
-                                                    ? "bg-black/[.08] text-stone-950 ring-1 ring-inset ring-black/10 dark:bg-white/15 dark:text-white dark:ring-white/10"
-                                                    : "text-stone-700 hover:bg-black/5 hover:text-stone-950 dark:text-stone-200 dark:hover:bg-white/10 dark:hover:text-white",
+                                                active ? "bg-[linear-gradient(135deg,#f97316,#ea580c)] !text-white shadow-sm" : "text-stone-600 hover:bg-black/5 hover:text-stone-950 dark:text-stone-300 dark:hover:bg-white/10 dark:hover:text-white",
                                             )}
                                             aria-current={active ? "page" : undefined}
                                             aria-label={tool.label}

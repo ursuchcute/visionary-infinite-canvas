@@ -40,6 +40,20 @@ Visionary Infinite Canvas 是面向 AI 图片创作的开源画布工作台，�
 
 ### 本地开发
 
+macOS 可以直接双击仓库根目录的 `start-local.command`，脚本会自动选择兼容的 Node.js、在首次启动时安装依赖，并打开：
+
+```text
+http://localhost:3002/canvas
+```
+
+也可以在终端运行：
+
+```bash
+./start-local.command
+```
+
+手动启动方式：
+
 ```bash
 git clone https://github.com/ursuchcute/visionary-infinite-canvas.git
 cd visionary-infinite-canvas/web
@@ -47,7 +61,7 @@ bun install
 bun run dev
 ```
 
-启动后访问 `http://localhost:3000`，在右上角配置自己的 OpenAI 兼容 `Base URL`、`API Key` 和模型。
+手动启动后访问 `http://localhost:3000`，在右上角配置自己的 OpenAI 兼容 `Base URL`、`API Key` 和模型。
 
 ### Docker
 

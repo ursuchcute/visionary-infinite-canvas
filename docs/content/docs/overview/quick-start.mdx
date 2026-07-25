@@ -13,6 +13,20 @@ description: 用最少步骤把 Visionary Infinite Canvas 跑起来
 
 ## 本地启动
 
+macOS 可以双击仓库根目录的 `start-local.command`，或在终端运行：
+
+```bash
+./start-local.command
+```
+
+脚本会自动选择兼容的 Node.js、在缺少依赖时执行安装，并打开：
+
+```text
+http://localhost:3002/canvas
+```
+
+手动启动方式：
+
 ```bash
 git clone https://github.com/ursuchcute/visionary-infinite-canvas.git
 cd visionary-infinite-canvas
@@ -21,7 +35,7 @@ bun install
 bun run dev
 ```
 
-启动后访问：
+手动启动后访问：
 
 ```text
 http://localhost:3000
