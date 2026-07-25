@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { ArrowUp, LoaderCircle, Square } from "lucide-react";
+import { ArrowUp, Coins, LoaderCircle, Square } from "lucide-react";
 import { Button } from "antd";
 
 import { ModelPicker } from "@/components/model-picker";
 import { defaultConfig, modelMatchesCapability, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
-import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
+import { CanvasImageAdvancedOptions, CanvasImageParameterControls } from "./canvas-image-parameter-controls";
 import { CanvasPromptLibrary } from "./canvas-prompt-library";
 import { CanvasAudioSettingsPopover, type CanvasAudioSettingKey } from "./canvas-audio-settings-popover";
 import { CanvasPromptChipInput } from "./canvas-prompt-chip-input";
@@ -37,10 +37,13 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
     const hasTextContent = node.type === CanvasNodeType.Text && Boolean(node.metadata?.content?.trim());
     const hasImageContent = node.type === CanvasNodeType.Image && Boolean(node.metadata?.content);
     const [prompt, setPrompt] = useState(node.metadata?.prompt || "");
+    const [imageAdvancedOpen, setImageAdvancedOpen] = useState(false);
 
     // 仅在切换节点时恢复该节点已保存的提示词，同一节点生成完成后继续保留当前输入。
     useEffect(() => {
         setPrompt(node.metadata?.prompt || "");
+        setImageAdvancedOpen(false);
+        onImageSettingsOpenChange?.(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [node.id]);
 
@@ -84,18 +87,9 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                         onMissingConfig={() => openConfigDialog(true)}
                         className="!h-9 !min-w-0 !max-w-[260px] !border-0 !bg-transparent !px-1 !shadow-none"
                     />
-                    <div className="flex shrink-0 items-center gap-3">
+                    <div className="flex shrink-0 items-center gap-2">
                         <span className="text-sm font-medium opacity-60">1×</span>
-                        <Button
-                            type="primary"
-                            className="!size-10 !min-w-10 shrink-0 !rounded-full !p-0"
-                            danger={isRunning}
-                            disabled={!isRunning && !prompt.trim()}
-                            onClick={() => (isRunning ? onStop(node.id) : submit())}
-                            aria-label={isRunning ? "停止生成" : "生成"}
-                        >
-                            {isRunning ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUp className="size-5" />}
-                        </Button>
+                        <GenerationAction isRunning={isRunning} disabled={!prompt.trim()} theme={theme} onClick={() => (isRunning ? onStop(node.id) : submit())} />
                     </div>
                 </div>
             </div>
@@ -115,24 +109,31 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                 references={mentionReferences}
                 onChange={updatePrompt}
                 onSubmit={submit}
-                className="thin-scrollbar h-40 w-full cursor-text resize-none rounded-xl px-3 py-2 text-sm leading-5 outline-none"
+                className={`thin-scrollbar w-full cursor-text resize-none rounded-xl px-3 py-2 text-sm leading-5 outline-none transition-[height] duration-200 ${mode === "image" && imageAdvancedOpen ? "h-20" : "h-40"}`}
                 style={{ background: "transparent", color: theme.node.text }}
                 placeholder={promptPlaceholder(mode, hasImageContent, hasTextContent)}
             />
 
             <div className="mt-2 flex min-w-0 items-center justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-2">
+                <div className="thin-scrollbar flex min-w-0 items-center gap-1 overflow-x-auto">
                     <CanvasPromptLibrary onSelect={updatePrompt} />
                     {mode === "image" ? (
                         <>
-                            <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="image" onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" />
-                            <CanvasImageSettingsPopover
+                            <ModelPicker
                                 config={config}
-                                placement="topLeft"
-                                buttonClassName="!h-10 !max-w-[170px] !justify-start !rounded-full !px-3"
-                                onConfigChange={(key, value) => onConfigChange(node.id, key === "count" ? { count: Number(value) || 1 } : { [key]: value })}
+                                value={config.model}
+                                onChange={(model) => onConfigChange(node.id, { model })}
+                                capability="image"
                                 onMissingConfig={() => openConfigDialog(true)}
+                                className="!h-10 !min-w-[150px] !max-w-[190px] !border-0 !bg-transparent !px-2 !shadow-none"
+                            />
+                            <PanelDivider color={theme.toolbar.border} />
+                            <CanvasImageParameterControls
+                                config={config}
+                                onConfigChange={(key, value) => onConfigChange(node.id, key === "count" ? { count: Number(value) || 1 } : { [key]: value })}
                                 onOpenChange={onImageSettingsOpenChange}
+                                advancedOpen={imageAdvancedOpen}
+                                onAdvancedToggle={() => setImageAdvancedOpen((current) => !current)}
                             />
                         </>
                     ) : mode === "video" ? (
@@ -149,27 +150,9 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                         <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="text" onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" />
                     )}
                 </div>
-                <Button
-                    type="primary"
-                    className="!h-10 !min-w-16 shrink-0 !rounded-full !px-3"
-                    danger={isRunning}
-                    disabled={!isRunning && !prompt.trim()}
-                    onClick={() => (isRunning ? onStop(node.id) : submit())}
-                    aria-label={isRunning ? "停止生成" : "生成"}
-                >
-                    <span className="flex items-center gap-1.5">
-                        {isRunning ? (
-                            <>
-                                <LoaderCircle className="size-4 animate-spin" />
-                                <Square className="size-3.5 fill-current" />
-                                <span className="text-xs font-medium">停止</span>
-                            </>
-                        ) : (
-                            <ArrowUp className="size-4" />
-                        )}
-                    </span>
-                </Button>
+                <GenerationAction isRunning={isRunning} disabled={!prompt.trim()} theme={theme} onClick={() => (isRunning ? onStop(node.id) : submit())} />
             </div>
+            {mode === "image" && imageAdvancedOpen ? <CanvasImageAdvancedOptions config={config} onConfigChange={(key, value) => onConfigChange(node.id, { [key]: value })} /> : null}
         </div>
     );
 }
@@ -182,11 +165,7 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
     const defaultModel = mode === "image" ? globalConfig.imageModel : mode === "video" ? globalConfig.videoModel : mode === "audio" ? globalConfig.audioModel : globalConfig.textModel;
     const fallbackModel = mode === "image" ? defaultConfig.imageModel : mode === "video" ? defaultConfig.videoModel : mode === "audio" ? defaultConfig.audioModel : defaultConfig.textModel;
     const currentModel = node.metadata?.model;
-    const model = currentModel && modelMatchesCapability(globalConfig, currentModel, mode)
-        ? currentModel
-        : defaultModel && modelMatchesCapability(globalConfig, defaultModel, mode)
-            ? defaultModel
-            : fallbackModel;
+    const model = currentModel && modelMatchesCapability(globalConfig, currentModel, mode) ? currentModel : defaultModel && modelMatchesCapability(globalConfig, defaultModel, mode) ? defaultModel : fallbackModel;
     return {
         ...globalConfig,
         model,
@@ -224,4 +203,34 @@ function audioConfigPatch(key: CanvasAudioSettingKey, value: string) {
     if (key === "audioFormat") return { audioFormat: value };
     if (key === "audioSpeed") return { audioSpeed: value };
     return { audioInstructions: value };
+}
+
+function PanelDivider({ color }: { color: string }) {
+    return <span className="h-5 w-px shrink-0" style={{ background: color }} aria-hidden="true" />;
+}
+
+function GenerationAction({ isRunning, disabled, theme, onClick }: { isRunning: boolean; disabled: boolean; theme: (typeof canvasThemes)[keyof typeof canvasThemes]; onClick: () => void }) {
+    return (
+        <div className="flex h-11 shrink-0 items-center gap-1 rounded-full p-1 pl-2.5" style={{ background: theme.node.fill }} title="当前本地生成配置不计算积分" aria-label="积分不可用">
+            <Coins className="size-4 opacity-60" />
+            <span className="min-w-5 text-center text-xs font-medium opacity-65">--</span>
+            <Button
+                className="!size-9 !min-w-9 shrink-0 !rounded-full !border-0 !p-0"
+                style={isRunning ? undefined : { background: theme.node.text, color: theme.node.panel }}
+                danger={isRunning}
+                disabled={!isRunning && disabled}
+                onClick={onClick}
+                aria-label={isRunning ? "停止生成" : "生成"}
+            >
+                {isRunning ? (
+                    <span className="flex items-center gap-0.5">
+                        <LoaderCircle className="size-3.5 animate-spin" />
+                        <Square className="size-2.5 fill-current" />
+                    </span>
+                ) : (
+                    <ArrowUp className="size-4" />
+                )}
+            </Button>
+        </div>
+    );
 }
