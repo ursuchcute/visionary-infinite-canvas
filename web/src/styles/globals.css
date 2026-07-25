@@ -163,12 +163,12 @@
 
 @layer components {
     .visionary-app {
-        background: var(--visionary-page);
+        background-color: var(--visionary-page);
+        background-image: radial-gradient(circle at 50% -12%, var(--visionary-glow), transparent 38%);
     }
 
     .visionary-page {
-        background-color: var(--visionary-page);
-        background-image: radial-gradient(circle at 50% -12%, var(--visionary-glow), transparent 38%);
+        background: transparent;
     }
 
     .visionary-title {
