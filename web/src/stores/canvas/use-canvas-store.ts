@@ -110,7 +110,7 @@ export const useCanvasStore = create<CanvasStore>()(
                     connections: [],
                     chatSessions: [],
                     activeChatId: null,
-                    backgroundMode: "lines",
+                    backgroundMode: "dots",
                     showImageInfo: false,
                     viewport: initialViewport,
                 };
@@ -128,7 +128,7 @@ export const useCanvasStore = create<CanvasStore>()(
                     connections: source.connections || [],
                     chatSessions: source.chatSessions || [],
                     activeChatId: source.activeChatId || null,
-                    backgroundMode: source.backgroundMode || "lines",
+                    backgroundMode: source.backgroundMode === "blank" ? "blank" : "dots",
                     showImageInfo: source.showImageInfo || false,
                     viewport: source.viewport || initialViewport,
                 };
@@ -137,7 +137,8 @@ export const useCanvasStore = create<CanvasStore>()(
                 return project.id;
             },
             openProject: (id) => {
-                return get().projects.find((item) => item.id === id) || null;
+                const project = get().projects.find((item) => item.id === id);
+                return project ? { ...project, backgroundMode: project.backgroundMode === "blank" ? "blank" : "dots" } : null;
             },
             renameProject: (id, title) =>
                 set((state) => ({
