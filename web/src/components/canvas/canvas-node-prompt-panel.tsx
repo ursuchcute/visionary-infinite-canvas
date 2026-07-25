@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowUp, LoaderCircle, Square } from "lucide-react";
+import { ArrowUp, Square } from "lucide-react";
 import { Button } from "antd";
 
 import { ModelPicker } from "@/components/model-picker";
@@ -59,44 +59,41 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
         return (
             <div
                 data-text-node-prompt-panel
-                className="rounded-[22px] border p-3 shadow-2xl backdrop-blur"
+                className="overflow-hidden rounded-[22px] border shadow-2xl backdrop-blur"
                 style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
                 onMouseDown={(event) => event.stopPropagation()}
                 onPointerDown={(event) => event.stopPropagation()}
                 onWheel={(event) => event.stopPropagation()}
             >
-                <CanvasPromptLibrary onSelect={updatePrompt} variant="add" />
-                <CanvasPromptChipInput
-                    value={prompt}
-                    references={mentionReferences}
-                    onChange={updatePrompt}
-                    onSubmit={submit}
-                    className="thin-scrollbar mt-1 h-16 w-full cursor-text resize-none px-1 py-2 text-[15px] leading-6 outline-none"
-                    style={{ background: "transparent", color: theme.node.text }}
-                    placeholder={promptPlaceholder(mode, hasImageContent, hasTextContent)}
-                />
-                <div className="mt-1 flex min-w-0 items-center justify-between gap-3">
-                    <ModelPicker
-                        config={config}
-                        value={config.model}
-                        onChange={(model) => onConfigChange(node.id, { model })}
-                        capability="text"
-                        onMissingConfig={() => openConfigDialog(true)}
-                        className="!h-9 !min-w-0 !max-w-[260px] !border-0 !bg-transparent !px-1 !shadow-none"
+                <div className="px-3 pt-2">
+                    <CanvasPromptChipInput
+                        value={prompt}
+                        references={mentionReferences}
+                        onChange={updatePrompt}
+                        onSubmit={submit}
+                        className="thin-scrollbar h-16 w-full cursor-text resize-none px-1 py-2 text-[15px] leading-6 outline-none"
+                        style={{ background: "transparent", color: theme.node.text }}
+                        placeholder={promptPlaceholder(mode, hasImageContent, hasTextContent)}
                     />
-                    <div className="flex shrink-0 items-center gap-3">
-                        <span className="text-sm font-medium opacity-60">1×</span>
-                        <Button
-                            type="primary"
-                            className="!size-10 !min-w-10 shrink-0 !rounded-full !p-0"
-                            danger={isRunning}
-                            disabled={!isRunning && !prompt.trim()}
-                            onClick={() => (isRunning ? onStop(node.id) : submit())}
-                            aria-label={isRunning ? "停止生成" : "生成"}
-                        >
-                            {isRunning ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUp className="size-5" />}
-                        </Button>
+                </div>
+                <div className="flex min-w-0 items-center border-t px-2 py-1" style={{ borderColor: theme.toolbar.border }}>
+                    <div className="thin-scrollbar flex min-w-0 flex-1 items-center overflow-x-auto">
+                        <div className="shrink-0 [&_.ant-btn]:!h-9 [&_.ant-btn]:!w-9 [&_.ant-btn]:!bg-transparent">
+                            <CanvasPromptLibrary onSelect={updatePrompt} />
+                        </div>
+                        <PanelDivider color={theme.toolbar.border} />
+                        <ModelPicker
+                            config={config}
+                            value={config.model}
+                            onChange={(model) => onConfigChange(node.id, { model })}
+                            capability="text"
+                            onMissingConfig={() => openConfigDialog(true)}
+                            className="!h-9 !min-w-0 !max-w-[260px] !rounded-none !border-0 !bg-transparent !px-2 !shadow-none"
+                        />
                     </div>
+                    <PanelDivider color={theme.toolbar.border} />
+                    <span className="shrink-0 px-3 text-sm font-medium opacity-60">1×</span>
+                    <GenerateButton isRunning={isRunning} disabled={!isRunning && !prompt.trim()} onClick={() => (isRunning ? onStop(node.id) : submit())} color={theme.node.text} background={theme.node.panel} />
                 </div>
             </div>
         );
@@ -104,32 +101,45 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
 
     return (
         <div
-            className="rounded-2xl border p-3 shadow-2xl backdrop-blur"
+            className="overflow-hidden rounded-[22px] border shadow-2xl backdrop-blur"
             style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
             onMouseDown={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
             onWheel={(event) => event.stopPropagation()}
         >
-            <CanvasPromptChipInput
-                value={prompt}
-                references={mentionReferences}
-                onChange={updatePrompt}
-                onSubmit={submit}
-                className="thin-scrollbar h-40 w-full cursor-text resize-none rounded-xl px-3 py-2 text-sm leading-5 outline-none"
-                style={{ background: "transparent", color: theme.node.text }}
-                placeholder={promptPlaceholder(mode, hasImageContent, hasTextContent)}
-            />
+            <div className="p-3 pb-2">
+                <CanvasPromptChipInput
+                    value={prompt}
+                    references={mentionReferences}
+                    onChange={updatePrompt}
+                    onSubmit={submit}
+                    className="thin-scrollbar h-40 w-full cursor-text resize-none rounded-xl px-3 py-2 text-sm leading-5 outline-none"
+                    style={{ background: "transparent", color: theme.node.text }}
+                    placeholder={promptPlaceholder(mode, hasImageContent, hasTextContent)}
+                />
+            </div>
 
-            <div className="mt-2 flex min-w-0 items-center justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-2">
-                    <CanvasPromptLibrary onSelect={updatePrompt} />
+            <div className="flex min-w-0 items-center border-t px-2 py-1" style={{ borderColor: theme.toolbar.border }}>
+                <div className="thin-scrollbar flex min-w-0 flex-1 items-center overflow-x-auto">
+                    <div className="shrink-0 [&_.ant-btn]:!h-10 [&_.ant-btn]:!w-10 [&_.ant-btn]:!bg-transparent">
+                        <CanvasPromptLibrary onSelect={updatePrompt} />
+                    </div>
+                    <PanelDivider color={theme.toolbar.border} />
                     {mode === "image" ? (
                         <>
-                            <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="image" onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" />
+                            <ModelPicker
+                                config={config}
+                                value={config.model}
+                                onChange={(model) => onConfigChange(node.id, { model })}
+                                capability="image"
+                                onMissingConfig={() => openConfigDialog(true)}
+                                className="!h-10 max-w-[190px] !rounded-none !border-0 !bg-transparent !px-2 !shadow-none"
+                            />
+                            <PanelDivider color={theme.toolbar.border} />
                             <CanvasImageSettingsPopover
                                 config={config}
                                 placement="topLeft"
-                                buttonClassName="!h-10 !max-w-[170px] !justify-start !rounded-full !px-3"
+                                buttonClassName="!h-10 !max-w-[190px] !justify-start !rounded-none !border-0 !bg-transparent !px-3 !shadow-none"
                                 onConfigChange={(key, value) => onConfigChange(node.id, key === "count" ? { count: Number(value) || 1 } : { [key]: value })}
                                 onMissingConfig={() => openConfigDialog(true)}
                                 onOpenChange={onImageSettingsOpenChange}
@@ -137,40 +147,73 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                         </>
                     ) : mode === "video" ? (
                         <>
-                            <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="video" onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" />
-                            <CanvasVideoSettingsPopover config={config} buttonClassName="!h-10 !max-w-[170px] !justify-start !rounded-full !px-3" onConfigChange={(key, value) => onConfigChange(node.id, videoConfigPatch(key, value))} />
+                            <ModelPicker
+                                config={config}
+                                value={config.model}
+                                onChange={(model) => onConfigChange(node.id, { model })}
+                                capability="video"
+                                onMissingConfig={() => openConfigDialog(true)}
+                                className="!h-10 max-w-[190px] !rounded-none !border-0 !bg-transparent !px-2 !shadow-none"
+                            />
+                            <PanelDivider color={theme.toolbar.border} />
+                            <CanvasVideoSettingsPopover
+                                config={config}
+                                buttonClassName="!h-10 !max-w-[190px] !justify-start !rounded-none !border-0 !bg-transparent !px-3 !shadow-none"
+                                onConfigChange={(key, value) => onConfigChange(node.id, videoConfigPatch(key, value))}
+                            />
                         </>
                     ) : mode === "audio" ? (
                         <>
-                            <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="audio" onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" />
-                            <CanvasAudioSettingsPopover config={config} buttonClassName="!h-10 !max-w-[170px] !justify-start !rounded-full !px-3" onConfigChange={(key, value) => onConfigChange(node.id, audioConfigPatch(key, value))} />
+                            <ModelPicker
+                                config={config}
+                                value={config.model}
+                                onChange={(model) => onConfigChange(node.id, { model })}
+                                capability="audio"
+                                onMissingConfig={() => openConfigDialog(true)}
+                                className="!h-10 max-w-[190px] !rounded-none !border-0 !bg-transparent !px-2 !shadow-none"
+                            />
+                            <PanelDivider color={theme.toolbar.border} />
+                            <CanvasAudioSettingsPopover
+                                config={config}
+                                buttonClassName="!h-10 !max-w-[190px] !justify-start !rounded-none !border-0 !bg-transparent !px-3 !shadow-none"
+                                onConfigChange={(key, value) => onConfigChange(node.id, audioConfigPatch(key, value))}
+                            />
                         </>
                     ) : (
-                        <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="text" onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" />
+                        <ModelPicker
+                            config={config}
+                            value={config.model}
+                            onChange={(model) => onConfigChange(node.id, { model })}
+                            capability="text"
+                            onMissingConfig={() => openConfigDialog(true)}
+                            className="!h-10 max-w-[190px] !rounded-none !border-0 !bg-transparent !px-2 !shadow-none"
+                        />
                     )}
                 </div>
-                <Button
-                    type="primary"
-                    className="!h-10 !min-w-16 shrink-0 !rounded-full !px-3"
-                    danger={isRunning}
-                    disabled={!isRunning && !prompt.trim()}
-                    onClick={() => (isRunning ? onStop(node.id) : submit())}
-                    aria-label={isRunning ? "停止生成" : "生成"}
-                >
-                    <span className="flex items-center gap-1.5">
-                        {isRunning ? (
-                            <>
-                                <LoaderCircle className="size-4 animate-spin" />
-                                <Square className="size-3.5 fill-current" />
-                                <span className="text-xs font-medium">停止</span>
-                            </>
-                        ) : (
-                            <ArrowUp className="size-4" />
-                        )}
-                    </span>
-                </Button>
+                <PanelDivider color={theme.toolbar.border} />
+                <GenerateButton isRunning={isRunning} disabled={!isRunning && !prompt.trim()} onClick={() => (isRunning ? onStop(node.id) : submit())} color={theme.node.text} background={theme.node.panel} />
             </div>
         </div>
+    );
+}
+
+function PanelDivider({ color }: { color: string }) {
+    return <span aria-hidden className="mx-1 h-6 w-px shrink-0" style={{ background: color }} />;
+}
+
+function GenerateButton({ isRunning, disabled, onClick, color, background }: { isRunning: boolean; disabled: boolean; onClick: () => void; color: string; background: string }) {
+    return (
+        <Button
+            type="text"
+            shape="circle"
+            className="!size-10 !min-w-10 shrink-0 !border-0 !p-0 !shadow-none disabled:!opacity-35"
+            disabled={disabled}
+            onClick={onClick}
+            aria-label={isRunning ? "停止生成" : "生成"}
+            style={{ background: isRunning ? "#ef4444" : color, color: isRunning ? "#ffffff" : background }}
+        >
+            {isRunning ? <Square className="size-3.5 fill-current" /> : <ArrowUp className="size-5" />}
+        </Button>
     );
 }
 
@@ -182,11 +225,7 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
     const defaultModel = mode === "image" ? globalConfig.imageModel : mode === "video" ? globalConfig.videoModel : mode === "audio" ? globalConfig.audioModel : globalConfig.textModel;
     const fallbackModel = mode === "image" ? defaultConfig.imageModel : mode === "video" ? defaultConfig.videoModel : mode === "audio" ? defaultConfig.audioModel : defaultConfig.textModel;
     const currentModel = node.metadata?.model;
-    const model = currentModel && modelMatchesCapability(globalConfig, currentModel, mode)
-        ? currentModel
-        : defaultModel && modelMatchesCapability(globalConfig, defaultModel, mode)
-            ? defaultModel
-            : fallbackModel;
+    const model = currentModel && modelMatchesCapability(globalConfig, currentModel, mode) ? currentModel : defaultModel && modelMatchesCapability(globalConfig, defaultModel, mode) ? defaultModel : fallbackModel;
     return {
         ...globalConfig,
         model,

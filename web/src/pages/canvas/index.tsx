@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { App, Button } from "antd";
-import { Download, FileUp, Plus, Sparkles } from "lucide-react";
+import { Download, FileUp, Plus } from "lucide-react";
 
 import { LazyCanvasDeleteProjectsDialog } from "@/components/canvas/lazy-canvas-delete-projects-dialog";
 import { CanvasProjectCard } from "@/components/canvas/canvas-project-card";
@@ -74,8 +74,7 @@ export default function CanvasPage() {
 
     const secondaryButtonClass =
         "!h-11 !rounded-2xl !border-stone-300/80 !bg-white/75 !px-4 !text-stone-700 !shadow-none backdrop-blur transition hover:!border-stone-400 hover:!bg-white dark:!border-white/10 dark:!bg-white/[.04] dark:!text-stone-200 dark:hover:!border-white/20 dark:hover:!bg-white/[.08]";
-    const primaryButtonClass =
-        "!h-11 !rounded-2xl !border-stone-950 !bg-stone-950 !px-5 !font-medium !text-white !shadow-[0_0_24px_rgba(0,0,0,.10)] hover:!border-stone-700 hover:!bg-stone-800 dark:!border-white dark:!bg-white dark:!text-black dark:!shadow-[0_0_24px_rgba(255,255,255,.10)] dark:hover:!border-stone-200 dark:hover:!bg-stone-200";
+    const canvasActionButtonClass = "!h-9 !rounded-md !border-0 !bg-transparent !px-2 !font-medium !text-stone-600 !shadow-none hover:!bg-transparent hover:!text-stone-950 dark:!text-stone-300 dark:hover:!bg-transparent dark:hover:!text-white";
 
     return (
         <main className="relative isolate h-full overflow-auto bg-[#f5f5f3] text-stone-950 [&_button:not(:disabled)]:cursor-pointer dark:bg-[#050505] dark:text-stone-100">
@@ -95,10 +94,10 @@ export default function CanvasPage() {
                             </Button>
                         </>
                     ) : null}
-                    <Button className={secondaryButtonClass} disabled={!hydrated} icon={<FileUp className="size-4" />} onClick={() => inputRef.current?.click()}>
+                    <Button type="text" className={canvasActionButtonClass} disabled={!hydrated} icon={<FileUp className="size-4" />} onClick={() => inputRef.current?.click()}>
                         导入画布
                     </Button>
-                    <Button className={primaryButtonClass} disabled={!hydrated} icon={<Plus className="size-4" />} onClick={createAndEnter}>
+                    <Button type="text" className={canvasActionButtonClass} disabled={!hydrated} icon={<Plus className="size-4" />} onClick={createAndEnter}>
                         新建画布
                     </Button>
                 </header>
@@ -113,21 +112,7 @@ export default function CanvasPage() {
                             <CanvasProjectCard key={project.id} project={project} />
                         ))}
                     </div>
-                ) : (
-                    <section className="relative flex min-h-[420px] overflow-hidden rounded-[28px] border border-black/[.08] bg-white/70 shadow-[0_10px_40px_rgba(0,0,0,.06)] backdrop-blur dark:border-white/[.08] dark:bg-white/[.03] dark:shadow-[0_10px_40px_rgba(0,0,0,.25)]">
-                        <div aria-hidden className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(59,130,246,.10),transparent_34%)] dark:bg-[radial-gradient(circle_at_50%_35%,rgba(59,130,246,.12),transparent_34%)]" />
-                        <div className="relative m-auto flex max-w-lg flex-col items-center px-6 text-center">
-                            <span className="grid size-12 place-items-center rounded-2xl border border-stone-300/80 bg-white text-blue-500 shadow-sm dark:border-white/10 dark:bg-white/[.05]">
-                                <Sparkles className="size-5" />
-                            </span>
-                            <h2 className="mt-5 text-2xl font-semibold tracking-tight">开始第一张无限画布</h2>
-                            <p className="mt-3 text-sm leading-6 text-stone-500">新建画布后，可以自由连接图片、文本、配置与生成结果，并持续扩展您的创作过程。</p>
-                            <Button className={`${primaryButtonClass} mt-7`} icon={<Plus className="size-4" />} onClick={createAndEnter}>
-                                新建画布
-                            </Button>
-                        </div>
-                    </section>
-                )}
+                ) : null}
             </div>
 
             <input ref={inputRef} type="file" accept="application/zip,.zip" className="hidden" onChange={(event) => void importCanvas(event.target.files?.[0])} />
