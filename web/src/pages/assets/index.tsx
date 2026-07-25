@@ -1,4 +1,4 @@
-import { Copy, Download, PencilLine, Plus, Trash2, Upload } from "lucide-react";
+import { Copy, Download, PencilLine, Plus, Search, Trash2, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { App, Button, Card, Drawer, Empty, Form, Image, Input, Modal, Pagination, Select, Space, Tag, Typography } from "antd";
 import { saveAs } from "file-saver";
@@ -40,6 +40,7 @@ export default function AssetsPage() {
     const addAsset = useAssetStore((state) => state.addAsset);
     const updateAsset = useAssetStore((state) => state.updateAsset);
     const removeAsset = useAssetStore((state) => state.removeAsset);
+    const [keyword, setKeyword] = useState("");
     const [kindFilter, setKindFilter] = useState<AssetKind | "all">("all");
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
@@ -55,7 +56,14 @@ export default function AssetsPage() {
     const content = Form.useWatch("content", form) || "";
     const validAssets = useMemo(() => assets.filter((asset) => asset.kind === "text" || asset.kind === "image" || asset.kind === "video"), [assets]);
 
-    const filteredAssets = useMemo(() => validAssets.filter((asset) => kindFilter === "all" || asset.kind === kindFilter), [validAssets, kindFilter]);
+    const filteredAssets = useMemo(() => {
+        const query = keyword.trim().toLowerCase();
+        return validAssets.filter((asset) => {
+            if (kindFilter !== "all" && asset.kind !== kindFilter) return false;
+            if (!query) return true;
+            return assetSearchText(asset).includes(query);
+        });
+    }, [validAssets, keyword, kindFilter]);
 
     const visibleAssets = useMemo(() => {
         const start = (page - 1) * pageSize;
@@ -181,7 +189,26 @@ export default function AssetsPage() {
         <div className="flex h-full flex-col overflow-hidden text-stone-900 dark:text-stone-100">
             <main className="visionary-page min-h-0 flex-1 overflow-y-auto px-6 py-10">
                 <div className="pb-6">
-                    <div className="visionary-surface mx-auto grid max-w-6xl gap-3 p-4 text-left sm:p-5">
+                    <div className="mx-auto w-full max-w-2xl">
+                        <Input.Search
+                            className="w-full"
+                            size="large"
+                            allowClear
+                            prefix={<Search className="size-4 text-stone-400" />}
+                            value={keyword}
+                            placeholder="搜索标题、内容、标签或来源"
+                            onChange={(event) => {
+                                setPage(1);
+                                setKeyword(event.target.value);
+                            }}
+                            onSearch={(value) => {
+                                setPage(1);
+                                setKeyword(value);
+                            }}
+                        />
+                    </div>
+
+                    <div className="visionary-surface mx-auto mt-6 grid max-w-6xl gap-3 p-4 text-left sm:p-5">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div className="grid gap-2 sm:grid-cols-[56px_minmax(0,1fr)] sm:items-center">
                                 <div className="text-xs font-medium text-stone-500 dark:text-stone-400">类型</div>
@@ -490,4 +517,8 @@ function AssetDrawer({ asset, onClose, onCopy, onDownload }: { asset: Asset | nu
 function assetSummary(asset: Asset) {
     if (asset.kind === "text") return asset.data.content;
     return `${asset.data.width}x${asset.data.height} · ${formatBytes(asset.data.bytes)} · ${asset.data.mimeType}`;
+}
+
+function assetSearchText(asset: Asset) {
+    return [asset.title, asset.source || "", asset.note || "", (asset.tags || []).join(" "), asset.kind === "text" ? asset.data.content : asset.data.mimeType].join(" ").toLowerCase();
 }
