@@ -84,7 +84,7 @@ export default function CanvasPage() {
                 className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[520px] bg-[radial-gradient(circle_at_50%_-15%,rgba(59,130,246,.12),transparent_46%)] dark:bg-[radial-gradient(circle_at_50%_-15%,rgba(59,130,246,.16),transparent_46%)]"
             />
             <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 py-6 lg:px-8">
-                <header className="flex flex-wrap items-center justify-end gap-2.5">
+                <header className="flex flex-wrap items-center justify-start gap-2.5">
                     {selectedIds.length ? (
                         <>
                             <Button className={secondaryButtonClass} disabled={!hydrated} icon={<Download className="size-4" />} onClick={() => void exportSelectedProjects()}>
