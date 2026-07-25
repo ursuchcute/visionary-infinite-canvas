@@ -77,7 +77,7 @@ export async function hydrateAssistantImages(sessions: CanvasAssistantSession[])
 }
 
 export function getGenerationCount(count: string) {
-    return Math.max(1, Math.min(15, Math.floor(Math.abs(Number(count)) || 1)));
+    return Math.max(1, Math.min(9, Math.floor(Math.abs(Number(count)) || 1)));
 }
 
 export function getInputSummary(inputs: NodeGenerationInput[]) {
@@ -94,8 +94,10 @@ export function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | u
     return {
         ...config,
         model: node?.metadata?.model || defaultModel || (mode === "audio" ? defaultConfig.audioModel : config.model || defaultConfig.model),
-        quality: node?.metadata?.quality || config.quality || defaultConfig.quality,
-        size: node?.metadata?.size || config.size || defaultConfig.size,
+        quality: node?.metadata?.quality || (mode === "image" ? "auto" : config.quality || defaultConfig.quality),
+        size: node?.metadata?.size || (mode === "image" ? "1:1" : config.size || defaultConfig.size),
+        imageResolution: node?.metadata?.imageResolution,
+        imageAspectRatio: node?.metadata?.imageAspectRatio,
         background: node?.metadata?.background ?? config.background ?? defaultConfig.background,
         videoSeconds: node?.metadata?.seconds || config.videoSeconds || defaultConfig.videoSeconds,
         vquality: node?.metadata?.vquality || config.vquality || defaultConfig.vquality,

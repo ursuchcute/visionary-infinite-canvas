@@ -44,6 +44,8 @@ export type AiConfig = {
     models: string[];
     quality: string;
     size: string;
+    imageResolution?: "standard" | "2k" | "4k";
+    imageAspectRatio?: string;
     background: string;
     count: string;
     canvasImageCount: string;

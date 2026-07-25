@@ -1,13 +1,16 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
+import { canvasBoundsIntersect, getConnectionBounds, getViewportWorldBounds } from "@/lib/canvas/canvas-connection-geometry";
 import { useCanvasViewportStore } from "@/stores/canvas/use-canvas-viewport-store";
-import type { CanvasNodeData, ViewportTransform } from "@/types/canvas";
+import type { CanvasConnection, CanvasNodeData, ViewportTransform } from "@/types/canvas";
 
 const CULLING_VIEWPORT_INTERVAL = 100;
-const NODE_CULLING_PADDING = 280;
+const NODE_CULLING_SCREEN_PADDING = 320;
 
 type CanvasGraphLayerProps = {
     nodes: CanvasNodeData[];
+    connections: CanvasConnection[];
+    nodeById: ReadonlyMap<string, CanvasNodeData>;
     hiddenNodeIds: ReadonlySet<string>;
     viewport: ViewportTransform;
     viewportSize: { width: number; height: number };
@@ -23,7 +26,7 @@ function isSameViewport(current: ViewportTransform, next: ViewportTransform) {
  * Owns the throttled viewport used for graph culling so transient pan/zoom updates
  * only reconcile the graph subtree, never the full project page.
  */
-export function CanvasGraphLayer({ nodes, hiddenNodeIds, viewport, viewportSize, renderConnections, renderNode }: CanvasGraphLayerProps) {
+export function CanvasGraphLayer({ nodes, connections, nodeById, hiddenNodeIds, viewport, viewportSize, renderConnections, renderNode }: CanvasGraphLayerProps) {
     const [cullingViewport, setCullingViewport] = useState(viewport);
     const pendingViewportRef = useRef<ViewportTransform | null>(null);
     const lastCullingCommitAtRef = useRef(0);
@@ -76,14 +79,35 @@ export function CanvasGraphLayer({ nodes, hiddenNodeIds, viewport, viewportSize,
         if (benchmarkWindow.__VCANVAS_BENCHMARK__?.active) benchmarkWindow.__VCANVAS_BENCHMARK__.graphCommits += 1;
     });
 
-    const visibleNodes = useMemo(() => {
-        const viewLeft = -cullingViewport.x / cullingViewport.k - NODE_CULLING_PADDING;
-        const viewTop = -cullingViewport.y / cullingViewport.k - NODE_CULLING_PADDING;
-        const viewRight = viewLeft + viewportSize.width / cullingViewport.k + NODE_CULLING_PADDING * 2;
-        const viewBottom = viewTop + viewportSize.height / cullingViewport.k + NODE_CULLING_PADDING * 2;
+    const visibleConnectionEndpointIds = useMemo(() => {
+        const viewportBounds = getViewportWorldBounds(cullingViewport, viewportSize);
+        const endpointIds = new Set<string>();
 
-        return nodes.filter((node) => !hiddenNodeIds.has(node.id) && node.position.x + node.width > viewLeft && node.position.x < viewRight && node.position.y + node.height > viewTop && node.position.y < viewBottom);
-    }, [cullingViewport, hiddenNodeIds, nodes, viewportSize.height, viewportSize.width]);
+        for (const connection of connections) {
+            const from = nodeById.get(connection.fromNodeId);
+            const to = nodeById.get(connection.toNodeId);
+            if (!from || !to || hiddenNodeIds.has(from.id) || hiddenNodeIds.has(to.id)) continue;
+            if (!canvasBoundsIntersect(getConnectionBounds(from, to), viewportBounds)) continue;
+            endpointIds.add(from.id);
+            endpointIds.add(to.id);
+        }
+
+        return endpointIds;
+    }, [connections, cullingViewport, hiddenNodeIds, nodeById, viewportSize.height, viewportSize.width]);
+
+    const visibleNodes = useMemo(() => {
+        const bounds = getViewportWorldBounds(cullingViewport, viewportSize, NODE_CULLING_SCREEN_PADDING);
+
+        return nodes.filter(
+            (node) =>
+                !hiddenNodeIds.has(node.id) &&
+                (visibleConnectionEndpointIds.has(node.id) ||
+                    (node.position.x + node.width >= bounds.left &&
+                        node.position.x <= bounds.right &&
+                        node.position.y + node.height >= bounds.top &&
+                        node.position.y <= bounds.bottom)),
+        );
+    }, [cullingViewport, hiddenNodeIds, nodes, viewportSize.height, viewportSize.width, visibleConnectionEndpointIds]);
 
     return (
         <>

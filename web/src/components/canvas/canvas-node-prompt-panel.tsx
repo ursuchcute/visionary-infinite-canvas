@@ -3,10 +3,10 @@ import { ArrowUp, Coins, LoaderCircle, Square } from "lucide-react";
 import { Button } from "antd";
 
 import { ModelPicker } from "@/components/model-picker";
-import { defaultConfig, modelMatchesCapability, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
+import { defaultConfig, modelMatchesCapability, modelOptionName, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
-import { CanvasImageAdvancedOptions, CanvasImageParameterControls } from "./canvas-image-parameter-controls";
+import { CanvasImageParameterControls } from "./canvas-image-parameter-controls";
 import { CanvasPromptLibrary } from "./canvas-prompt-library";
 import { CanvasAudioSettingsPopover, type CanvasAudioSettingKey } from "./canvas-audio-settings-popover";
 import { CanvasPromptChipInput } from "./canvas-prompt-chip-input";
@@ -37,12 +37,10 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
     const hasTextContent = node.type === CanvasNodeType.Text && Boolean(node.metadata?.content?.trim());
     const hasImageContent = node.type === CanvasNodeType.Image && Boolean(node.metadata?.content);
     const [prompt, setPrompt] = useState(node.metadata?.prompt || "");
-    const [imageAdvancedOpen, setImageAdvancedOpen] = useState(false);
 
     // 仅在切换节点时恢复该节点已保存的提示词，同一节点生成完成后继续保留当前输入。
     useEffect(() => {
         setPrompt(node.metadata?.prompt || "");
-        setImageAdvancedOpen(false);
         onImageSettingsOpenChange?.(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [node.id]);
@@ -84,6 +82,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                         value={config.model}
                         onChange={(model) => onConfigChange(node.id, { model })}
                         capability="text"
+                        showIcon={false}
                         onMissingConfig={() => openConfigDialog(true)}
                         className="!h-9 !min-w-0 !max-w-[260px] !border-0 !bg-transparent !px-1 !shadow-none"
                     />
@@ -109,13 +108,13 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                 references={mentionReferences}
                 onChange={updatePrompt}
                 onSubmit={submit}
-                className={`thin-scrollbar w-full cursor-text resize-none rounded-xl px-3 py-2 text-sm leading-5 outline-none transition-[height] duration-200 ${mode === "image" && imageAdvancedOpen ? "h-20" : "h-40"}`}
+                className="thin-scrollbar h-40 w-full cursor-text resize-none rounded-xl px-3 py-2 text-sm leading-5 outline-none"
                 style={{ background: "transparent", color: theme.node.text }}
                 placeholder={promptPlaceholder(mode, hasImageContent, hasTextContent)}
             />
 
             <div className="mt-2 flex min-w-0 items-center justify-between gap-2">
-                <div className="thin-scrollbar flex min-w-0 items-center gap-1 overflow-x-auto">
+                <div className="flex min-w-0 items-center gap-1 overflow-hidden">
                     <CanvasPromptLibrary onSelect={updatePrompt} />
                     {mode === "image" ? (
                         <>
@@ -124,35 +123,29 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                                 value={config.model}
                                 onChange={(model) => onConfigChange(node.id, { model })}
                                 capability="image"
+                                showIcon={false}
                                 onMissingConfig={() => openConfigDialog(true)}
-                                className="!h-10 !min-w-[150px] !max-w-[190px] !border-0 !bg-transparent !px-2 !shadow-none"
+                                className="!h-10 !min-w-[150px] !max-w-[210px] !border-0 !bg-transparent !px-2 !shadow-none"
                             />
                             <PanelDivider color={theme.toolbar.border} />
-                            <CanvasImageParameterControls
-                                config={config}
-                                onConfigChange={(key, value) => onConfigChange(node.id, key === "count" ? { count: Number(value) || 1 } : { [key]: value })}
-                                onOpenChange={onImageSettingsOpenChange}
-                                advancedOpen={imageAdvancedOpen}
-                                onAdvancedToggle={() => setImageAdvancedOpen((current) => !current)}
-                            />
+                            <CanvasImageParameterControls config={config} metadata={node.metadata} hideQuality={isBananaModel(config.model)} onConfigPatch={(patch) => onConfigChange(node.id, patch)} onOpenChange={onImageSettingsOpenChange} />
                         </>
                     ) : mode === "video" ? (
                         <>
-                            <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="video" onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" />
+                            <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="video" showIcon={false} onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" />
                             <CanvasVideoSettingsPopover config={config} buttonClassName="!h-10 !max-w-[170px] !justify-start !rounded-full !px-3" onConfigChange={(key, value) => onConfigChange(node.id, videoConfigPatch(key, value))} />
                         </>
                     ) : mode === "audio" ? (
                         <>
-                            <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="audio" onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" />
+                            <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="audio" showIcon={false} onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" />
                             <CanvasAudioSettingsPopover config={config} buttonClassName="!h-10 !max-w-[170px] !justify-start !rounded-full !px-3" onConfigChange={(key, value) => onConfigChange(node.id, audioConfigPatch(key, value))} />
                         </>
                     ) : (
-                        <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="text" onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" />
+                        <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="text" showIcon={false} onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" />
                     )}
                 </div>
                 <GenerationAction isRunning={isRunning} disabled={!prompt.trim()} theme={theme} onClick={() => (isRunning ? onStop(node.id) : submit())} />
             </div>
-            {mode === "image" && imageAdvancedOpen ? <CanvasImageAdvancedOptions config={config} onConfigChange={(key, value) => onConfigChange(node.id, { [key]: value })} /> : null}
         </div>
     );
 }
@@ -169,8 +162,10 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
     return {
         ...globalConfig,
         model,
-        quality: node.metadata?.quality || globalConfig.quality || defaultConfig.quality,
-        size: node.metadata?.size || globalConfig.size || defaultConfig.size,
+        quality: node.metadata?.quality || (mode === "image" ? "auto" : globalConfig.quality || defaultConfig.quality),
+        size: node.metadata?.size || (mode === "image" ? "1:1" : globalConfig.size || defaultConfig.size),
+        imageResolution: node.metadata?.imageResolution,
+        imageAspectRatio: node.metadata?.imageAspectRatio,
         background: node.metadata?.background ?? globalConfig.background ?? defaultConfig.background,
         videoSeconds: node.metadata?.seconds || globalConfig.videoSeconds || defaultConfig.videoSeconds,
         vquality: node.metadata?.vquality || globalConfig.vquality || defaultConfig.vquality,
@@ -182,6 +177,11 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
         audioInstructions: node.metadata?.audioInstructions || globalConfig.audioInstructions || defaultConfig.audioInstructions,
         count: String(node.metadata?.count || (mode === "image" ? globalConfig.canvasImageCount || globalConfig.count : globalConfig.count) || defaultConfig.count),
     };
+}
+
+function isBananaModel(model: string) {
+    const name = modelOptionName(model).toLowerCase();
+    return name.includes("banana") || /gemini-(?:2[.]5-flash|3-pro|3[.]1-flash)-image/.test(name);
 }
 
 function promptPlaceholder(mode: CanvasNodeGenerationMode, hasImageContent: boolean, hasTextContent: boolean) {

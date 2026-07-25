@@ -287,6 +287,78 @@ async function runCase(browser, nodeCount) {
     return result;
 }
 
+async function runLongConnectionCullingCase(browser) {
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const page = await context.newPage();
+    const pageErrors = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+
+    await page.goto(`${BASE_URL}/canvas`, { waitUntil: "networkidle" });
+    const seeded = await page.evaluate(async () => {
+        const [{ useCanvasStore }, { createCanvasNode }, { CanvasNodeType }] = await Promise.all([import("/src/stores/canvas/use-canvas-store.ts"), import("/src/lib/canvas/canvas-node-factory.ts"), import("/src/types/canvas.ts")]);
+
+        const hydrationDeadline = performance.now() + 10_000;
+        while (!useCanvasStore.getState().hydrated) {
+            if (performance.now() > hydrationDeadline) throw new Error("画布存储初始化超时");
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+
+        const left = createCanvasNode(CanvasNodeType.Image, { x: 0, y: 0 });
+        const right = createCanvasNode(CanvasNodeType.Config, { x: 2500, y: 0 });
+        const connection = {
+            id: "long-connection-culling-regression",
+            fromNodeId: left.id,
+            toNodeId: right.id,
+        };
+        const projectId = useCanvasStore.getState().importProject({
+            title: "Long Connection Culling Regression",
+            nodes: [left, right],
+            connections: [connection],
+            viewport: { x: 200, y: 320, k: 0.45 },
+        });
+        return { projectId, rightNodeId: right.id, connectionId: connection.id };
+    });
+
+    await page.waitForTimeout(650);
+    await page.goto(`${BASE_URL}/canvas/${seeded.projectId}`, { waitUntil: "networkidle" });
+    const canvas = page.locator("[data-canvas-root]");
+    await canvas.waitFor({ state: "visible", timeout: 15_000 });
+    await page.waitForTimeout(300);
+
+    const readRenderedState = () =>
+        page.evaluate(
+            ({ rightNodeId, connectionId }) => ({
+                rightNodeMounted: Boolean(document.querySelector(`[data-node-id="${rightNodeId}"]`)),
+                connectionMounted: Boolean(document.querySelector(`[data-connection-id="${connectionId}"]`)),
+            }),
+            seeded,
+        );
+    const samples = [await readRenderedState()];
+    const box = await canvas.boundingBox();
+    if (!box) throw new Error("无法读取长连线回归画布尺寸");
+    const startX = box.x + box.width * 0.5;
+    const startY = box.y + box.height * 0.52;
+    await page.mouse.move(startX, startY);
+    await page.mouse.down({ button: "middle" });
+    for (let index = 1; index <= 9; index += 1) {
+        await page.mouse.move(startX + index * 40, startY);
+        await page.waitForTimeout(120);
+        samples.push(await readRenderedState());
+    }
+    await page.mouse.up({ button: "middle" });
+    await page.waitForTimeout(250);
+    samples.push(await readRenderedState());
+
+    const result = {
+        sampleCount: samples.length,
+        rightNodeRetained: samples.every((sample) => sample.rightNodeMounted),
+        connectionRetained: samples.every((sample) => sample.connectionMounted),
+        pageErrors,
+    };
+    await context.close();
+    return result;
+}
+
 const vitePath = path.join(webDir, "node_modules", "vite", "bin", "vite.js");
 const server = spawn(await findViteNode(), [vitePath, "--host", HOST, "--port", String(PORT), "--strictPort"], {
     cwd: webDir,
@@ -314,6 +386,7 @@ try {
     for (const nodeCount of BENCHMARK_NODE_COUNTS) {
         results.push(await runCase(browser, nodeCount));
     }
+    const longConnectionCulling = await runLongConnectionCullingCase(browser);
 
     console.table(
         results.map(({ pageErrors, ...result }) => ({
@@ -321,7 +394,7 @@ try {
             errors: pageErrors.length,
         })),
     );
-    console.log(JSON.stringify({ nodeCounts: BENCHMARK_NODE_COUNTS, results }, null, 2));
+    console.log(JSON.stringify({ nodeCounts: BENCHMARK_NODE_COUNTS, results, longConnectionCulling }, null, 2));
 
     const failed = results.filter(
         (result) =>
@@ -338,6 +411,9 @@ try {
     );
     if (failed.length) {
         throw new Error(`视口隔离基准未通过：${failed.map((result) => `${result.nodes} 节点`).join("、")}`);
+    }
+    if (longConnectionCulling.pageErrors.length || !longConnectionCulling.rightNodeRetained || !longConnectionCulling.connectionRetained) {
+        throw new Error("长连线端点节点裁剪回归未通过");
     }
 } catch (error) {
     if (serverOutput.trim()) console.error(serverOutput.trim());

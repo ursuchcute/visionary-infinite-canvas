@@ -1,42 +1,73 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { Frame, Images, SlidersHorizontal } from "lucide-react";
-import { Switch } from "antd";
 
-import { imageAspectOptions, imageQualityLabel, imageQualityOptions, imageSizeLabel } from "@/components/image-settings-panel";
+import { imageQualityLabel } from "@/components/image-settings-panel";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { AiConfig } from "@/stores/use-config-store";
+import type { CanvasNodeMetadata } from "@/types/canvas";
 
-type ImageParameterPanel = "display" | "count";
+export type CanvasImageResolution = "standard" | "2k" | "4k";
+
+type ImageParameterPanel = "resolution" | "ratio" | "quality" | "count";
+type CanvasImageParameterPatch = Pick<CanvasNodeMetadata, "imageResolution" | "imageAspectRatio" | "quality" | "size" | "count">;
 
 type CanvasImageParameterControlsProps = {
     config: AiConfig;
-    onConfigChange: (key: "quality" | "size" | "count", value: string) => void;
+    metadata?: CanvasNodeMetadata;
+    hideQuality?: boolean;
+    onConfigPatch: (patch: Partial<CanvasImageParameterPatch>) => void;
     onOpenChange?: (open: boolean) => void;
-    advancedOpen?: boolean;
-    onAdvancedToggle?: () => void;
 };
 
-export function CanvasImageParameterControls({ config, onConfigChange, onOpenChange, advancedOpen = false, onAdvancedToggle }: CanvasImageParameterControlsProps) {
+const RESOLUTION_OPTIONS: Array<{ value: CanvasImageResolution; label: string }> = [
+    { value: "standard", label: "标准" },
+    { value: "2k", label: "2K" },
+    { value: "4k", label: "4K" },
+];
+
+const QUALITY_OPTIONS = [
+    { value: "auto", label: "自动" },
+    { value: "low", label: "低" },
+    { value: "medium", label: "中" },
+    { value: "high", label: "高" },
+];
+
+export const CANVAS_IMAGE_ASPECT_RATIOS = ["auto", "1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16", "21:9", "9:21", "2:1", "1:2", "5:4", "4:5", "3:1", "1:3"] as const;
+
+export function CanvasImageParameterControls({ config, metadata, hideQuality = false, onConfigPatch, onOpenChange }: CanvasImageParameterControlsProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
-    const displayButtonRef = useRef<HTMLButtonElement>(null);
+    const resolutionButtonRef = useRef<HTMLButtonElement>(null);
+    const ratioButtonRef = useRef<HTMLButtonElement>(null);
+    const qualityButtonRef = useRef<HTMLButtonElement>(null);
     const countButtonRef = useRef<HTMLButtonElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const [activePanel, setActivePanel] = useState<ImageParameterPanel | null>(null);
     const [buttonRect, setButtonRect] = useState<DOMRect | null>(null);
-    const quality = config.quality || "auto";
-    const size = config.size || "auto";
-    const count = normalizeCount(config.count);
+    const { resolution, ratio } = resolveCanvasImageParameters(metadata);
+    const quality = metadata?.quality || "auto";
+    const count = normalizeCount(metadata?.count ?? config.count);
 
     const updatePanel = (panel: ImageParameterPanel | null) => {
         setActivePanel(panel);
         onOpenChange?.(Boolean(panel));
     };
 
+    const buttonRefFor = (panel: ImageParameterPanel) => {
+        if (panel === "resolution") return resolutionButtonRef;
+        if (panel === "ratio") return ratioButtonRef;
+        if (panel === "quality") return qualityButtonRef;
+        return countButtonRef;
+    };
+
+    useEffect(() => {
+        if (hideQuality && activePanel === "quality") updatePanel(null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [hideQuality]);
+
     useEffect(() => {
         if (!activePanel) return;
-        const activeButtonRef = activePanel === "display" ? displayButtonRef : countButtonRef;
+        const activeButtonRef = buttonRefFor(activePanel);
         const syncPosition = () => setButtonRect(activeButtonRef.current?.getBoundingClientRect() || null);
         const closeOnOutsidePointer = (event: PointerEvent) => {
             const target = event.target;
@@ -57,95 +88,95 @@ export function CanvasImageParameterControls({ config, onConfigChange, onOpenCha
         };
     }, [activePanel, onOpenChange]);
 
+    const selectResolution = (nextResolution: CanvasImageResolution) => {
+        onConfigPatch({ imageResolution: nextResolution, imageAspectRatio: ratio, size: resolveCanvasImageSize(nextResolution, ratio) });
+        updatePanel(null);
+    };
+    const selectRatio = (nextRatio: string) => {
+        onConfigPatch({ imageResolution: resolution, imageAspectRatio: nextRatio, size: resolveCanvasImageSize(resolution, nextRatio) });
+        updatePanel(null);
+    };
+
     const panel =
         activePanel && buttonRect
-            ? createPortal(<ImageParameterPortal activePanel={activePanel} buttonRect={buttonRect} panelRef={panelRef} config={config} theme={theme} onConfigChange={onConfigChange} onCountSelect={() => updatePanel(null)} />, document.body)
+            ? createPortal(
+                  <ImageParameterPortal
+                      activePanel={activePanel}
+                      buttonRect={buttonRect}
+                      panelRef={panelRef}
+                      theme={theme}
+                      resolution={resolution}
+                      ratio={ratio}
+                      quality={quality}
+                      count={count}
+                      onResolutionSelect={selectResolution}
+                      onRatioSelect={selectRatio}
+                      onQualitySelect={(value) => {
+                          onConfigPatch({ imageResolution: resolution, imageAspectRatio: ratio, quality: value, size: resolveCanvasImageSize(resolution, ratio) });
+                          updatePanel(null);
+                      }}
+                      onCountSelect={(value) => {
+                          onConfigPatch({ count: value });
+                          updatePanel(null);
+                      }}
+                  />,
+                  document.body,
+              )
             : null;
 
     return (
         <>
-            <button
-                ref={displayButtonRef}
-                type="button"
-                className="inline-flex h-10 max-w-[180px] shrink-0 cursor-pointer items-center gap-2 rounded-lg px-2 text-sm transition hover:opacity-75"
-                style={{ color: theme.node.text, background: activePanel === "display" ? theme.node.fill : "transparent" }}
-                title={`比例与清晰度：${imageSizeLabel(size)} · ${imageQualityLabel(quality)}`}
-                aria-label="设置图片比例与清晰度"
-                aria-expanded={activePanel === "display"}
-                onClick={() => updatePanel(activePanel === "display" ? null : "display")}
-            >
-                <Frame className="size-4 shrink-0 opacity-70" />
-                <span className="truncate">
-                    {imageSizeLabel(size)} · {imageQualityLabel(quality)}
-                </span>
-            </button>
+            <ParameterTrigger buttonRef={resolutionButtonRef} label="清晰度" value={resolutionLabel(resolution)} active={activePanel === "resolution"} theme={theme} onClick={() => updatePanel(activePanel === "resolution" ? null : "resolution")} />
+            <ParameterTrigger buttonRef={ratioButtonRef} label="比例" value={ratioLabel(ratio)} active={activePanel === "ratio"} theme={theme} onClick={() => updatePanel(activePanel === "ratio" ? null : "ratio")} />
+            {!hideQuality ? (
+                <ParameterTrigger buttonRef={qualityButtonRef} label="质量" value={imageQualityLabel(quality)} active={activePanel === "quality"} theme={theme} onClick={() => updatePanel(activePanel === "quality" ? null : "quality")} />
+            ) : null}
             <button
                 ref={countButtonRef}
                 type="button"
-                className="inline-flex h-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-sm font-medium transition hover:opacity-75"
+                className="inline-flex h-10 shrink-0 cursor-pointer items-center rounded-lg px-2 text-sm font-medium transition hover:opacity-75"
                 style={{ color: theme.node.text, background: activePanel === "count" ? theme.node.fill : "transparent" }}
                 title={`生成数量：${count} 张`}
                 aria-label="设置图片生成数量"
                 aria-expanded={activePanel === "count"}
                 onClick={() => updatePanel(activePanel === "count" ? null : "count")}
             >
-                <Images className="size-4 opacity-65" />
                 {count}×
             </button>
-            {onAdvancedToggle ? (
-                <button
-                    type="button"
-                    className="grid size-10 shrink-0 cursor-pointer place-items-center rounded-lg transition hover:opacity-75"
-                    style={{ color: theme.node.text, background: advancedOpen ? theme.node.fill : "transparent" }}
-                    title="更多图片参数"
-                    aria-label="展开更多图片参数"
-                    aria-expanded={advancedOpen}
-                    onClick={onAdvancedToggle}
-                >
-                    <SlidersHorizontal className="size-4 opacity-70" />
-                </button>
-            ) : null}
             {panel}
         </>
     );
 }
 
-export function CanvasImageAdvancedOptions({ config, onConfigChange }: { config: AiConfig; onConfigChange: (key: "size" | "background", value: string) => void }) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
-    const [snapDimensionToStep, setSnapDimensionToStep] = useState(true);
-    const size = config.size || "auto";
-    const dimensions = readSizeDimensions(size);
-    const transparentBackground = config.background === "transparent";
-    const updateDimension = (key: "width" | "height", value: number | null) => {
-        const next = Math.max(1, Math.floor(value || dimensions[key] || 1024));
-        const width = key === "width" ? next : dimensions.width;
-        const height = key === "height" ? next : dimensions.height;
-        onConfigChange("size", `${alignDimension(width, snapDimensionToStep)}x${alignDimension(height, snapDimensionToStep)}`);
-    };
-
+function ParameterTrigger({
+    buttonRef,
+    label,
+    value,
+    active,
+    theme,
+    onClick,
+}: {
+    buttonRef: RefObject<HTMLButtonElement | null>;
+    label: string;
+    value: string;
+    active: boolean;
+    theme: (typeof canvasThemes)[keyof typeof canvasThemes];
+    onClick: () => void;
+}) {
     return (
-        <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 rounded-xl px-3 py-2.5" style={{ background: theme.node.fill, color: theme.node.text }}>
-            <div className="min-w-0">
-                <div className="mb-1.5 text-[11px] font-medium" style={{ color: theme.node.muted }}>
-                    自定义尺寸
-                </div>
-                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                    <DimensionInput prefix="W" value={dimensions.width} disabled={size === "auto"} alignToStep={snapDimensionToStep} theme={theme} onChange={(value) => updateDimension("width", value)} />
-                    <span className="text-xs opacity-45">×</span>
-                    <DimensionInput prefix="H" value={dimensions.height} disabled={size === "auto"} alignToStep={snapDimensionToStep} theme={theme} onChange={(value) => updateDimension("height", value)} />
-                </div>
-            </div>
-            <div className="flex h-14 shrink-0 items-center gap-4">
-                <label className="flex cursor-pointer items-center gap-2 text-xs">
-                    <span className="whitespace-nowrap opacity-65">16 倍数</span>
-                    <Switch size="small" checked={snapDimensionToStep} onChange={setSnapDimensionToStep} />
-                </label>
-                <label className="flex cursor-pointer items-center gap-2 text-xs">
-                    <span className="whitespace-nowrap opacity-65">透明背景</span>
-                    <Switch size="small" checked={transparentBackground} onChange={(checked) => onConfigChange("background", checked ? "transparent" : "")} />
-                </label>
-            </div>
-        </div>
+        <button
+            ref={buttonRef}
+            type="button"
+            className="inline-flex h-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-sm transition hover:opacity-75"
+            style={{ color: theme.node.text, background: active ? theme.node.fill : "transparent" }}
+            title={`${label}：${value}`}
+            aria-label={`设置${label}`}
+            aria-expanded={active}
+            onClick={onClick}
+        >
+            <span className="text-xs opacity-55">{label}</span>
+            <span className="font-medium">{value}</span>
+        </button>
     );
 }
 
@@ -153,30 +184,39 @@ function ImageParameterPortal({
     activePanel,
     buttonRect,
     panelRef,
-    config,
     theme,
-    onConfigChange,
+    resolution,
+    ratio,
+    quality,
+    count,
+    onResolutionSelect,
+    onRatioSelect,
+    onQualitySelect,
     onCountSelect,
 }: {
     activePanel: ImageParameterPanel;
     buttonRect: DOMRect;
     panelRef: RefObject<HTMLDivElement | null>;
-    config: AiConfig;
     theme: (typeof canvasThemes)[keyof typeof canvasThemes];
-    onConfigChange: (key: "quality" | "size" | "count", value: string) => void;
-    onCountSelect: () => void;
+    resolution: CanvasImageResolution;
+    ratio: string;
+    quality: string;
+    count: number;
+    onResolutionSelect: (value: CanvasImageResolution) => void;
+    onRatioSelect: (value: string) => void;
+    onQualitySelect: (value: string) => void;
+    onCountSelect: (value: number) => void;
 }) {
-    const width = activePanel === "display" ? 328 : 236;
+    const width = activePanel === "ratio" ? 600 : activePanel === "quality" ? 320 : activePanel === "resolution" ? 260 : 236;
     const margin = 12;
     const left = Math.max(margin, Math.min(window.innerWidth - width - margin, buttonRect.left + buttonRect.width / 2 - width / 2));
+    const title = activePanel === "resolution" ? "清晰度" : activePanel === "ratio" ? "比例" : activePanel === "quality" ? "质量" : "生成数量";
     const style = {
         position: "fixed",
         zIndex: 1200,
-        width,
+        width: Math.min(width, window.innerWidth - margin * 2),
         left,
         bottom: window.innerHeight - buttonRect.top + 8,
-        maxHeight: Math.max(220, buttonRect.top - margin * 2),
-        overflowY: "auto",
         background: theme.toolbar.panel,
         border: `1px solid ${theme.toolbar.border}`,
         borderRadius: 16,
@@ -189,88 +229,50 @@ function ImageParameterPortal({
         <div
             ref={panelRef}
             role="dialog"
-            aria-label={activePanel === "display" ? "图片比例与清晰度" : "图片生成数量"}
-            className="thin-scrollbar animate-in fade-in zoom-in-95 duration-150"
+            aria-label={`图片${title}`}
+            className="animate-in fade-in zoom-in-95 duration-150"
             style={style}
             onPointerDown={(event) => event.stopPropagation()}
             onMouseDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
         >
-            {activePanel === "display" ? <DisplayOptions config={config} theme={theme} onConfigChange={onConfigChange} /> : <CountOptions config={config} theme={theme} onConfigChange={onConfigChange} onSelect={onCountSelect} />}
-        </div>
-    );
-}
-
-function DisplayOptions({ config, theme, onConfigChange }: { config: AiConfig; theme: (typeof canvasThemes)[keyof typeof canvasThemes]; onConfigChange: (key: "quality" | "size" | "count", value: string) => void }) {
-    const quality = config.quality || "auto";
-    const size = config.size || "auto";
-
-    return (
-        <div className="space-y-4">
-            <ParameterSection title="清晰度" color={theme.node.muted}>
-                <div className="grid grid-cols-4 gap-1.5 rounded-xl p-1" style={{ background: theme.node.fill }}>
-                    {imageQualityOptions.map((option) => (
-                        <ParameterOption key={option.value} active={quality === option.value} theme={theme} onClick={() => onConfigChange("quality", option.value)}>
+            <div className="mb-2 text-xs font-medium" style={{ color: theme.node.muted }}>
+                {title}
+            </div>
+            {activePanel === "resolution" ? (
+                <div className="grid grid-cols-3 gap-2">
+                    {RESOLUTION_OPTIONS.map((option) => (
+                        <ParameterOption key={option.value} active={resolution === option.value} theme={theme} onClick={() => onResolutionSelect(option.value)}>
                             {option.label}
                         </ParameterOption>
                     ))}
                 </div>
-            </ParameterSection>
-            <ParameterSection title="比例" color={theme.node.muted}>
-                <div className="grid grid-cols-4 gap-1.5">
-                    {imageAspectOptions.map((option) => (
-                        <button
-                            key={option.value}
-                            type="button"
-                            className="flex h-14 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl text-xs transition hover:opacity-75"
-                            style={{
-                                background: size === option.value ? theme.node.fill : "transparent",
-                                boxShadow: size === option.value ? `inset 0 0 0 1px ${theme.node.text}` : `inset 0 0 0 1px ${theme.node.stroke}`,
-                                color: theme.node.text,
-                            }}
-                            onClick={() => onConfigChange("size", option.value)}
-                        >
-                            <RatioGlyph label={option.label} color={theme.node.text} />
-                            <span className="max-w-full truncate px-1">{option.label.replace(/\(([^)]+)\)/, " $1")}</span>
-                        </button>
+            ) : activePanel === "ratio" ? (
+                <div className="grid grid-cols-8 gap-2">
+                    {CANVAS_IMAGE_ASPECT_RATIOS.map((option) => (
+                        <ParameterOption key={option} active={ratio === option} theme={theme} onClick={() => onRatioSelect(option)}>
+                            {ratioLabel(option)}
+                        </ParameterOption>
                     ))}
                 </div>
-            </ParameterSection>
+            ) : activePanel === "quality" ? (
+                <div className="grid grid-cols-4 gap-2">
+                    {QUALITY_OPTIONS.map((option) => (
+                        <ParameterOption key={option.value} active={quality === option.value} theme={theme} onClick={() => onQualitySelect(option.value)}>
+                            {option.label}
+                        </ParameterOption>
+                    ))}
+                </div>
+            ) : activePanel === "count" ? (
+                <div className="grid grid-cols-3 gap-1.5">
+                    {Array.from({ length: 9 }, (_, index) => index + 1).map((value) => (
+                        <ParameterOption key={value} active={count === value} theme={theme} onClick={() => onCountSelect(value)}>
+                            {value}×
+                        </ParameterOption>
+                    ))}
+                </div>
+            ) : null}
         </div>
-    );
-}
-
-function CountOptions({ config, theme, onConfigChange, onSelect }: { config: AiConfig; theme: (typeof canvasThemes)[keyof typeof canvasThemes]; onConfigChange: (key: "quality" | "size" | "count", value: string) => void; onSelect: () => void }) {
-    const count = normalizeCount(config.count);
-    return (
-        <ParameterSection title="生成数量" color={theme.node.muted}>
-            <div className="grid grid-cols-3 gap-1.5">
-                {Array.from({ length: 15 }, (_, index) => index + 1).map((value) => (
-                    <ParameterOption
-                        key={value}
-                        active={count === value}
-                        theme={theme}
-                        onClick={() => {
-                            onConfigChange("count", String(value));
-                            onSelect();
-                        }}
-                    >
-                        {value}×
-                    </ParameterOption>
-                ))}
-            </div>
-        </ParameterSection>
-    );
-}
-
-function ParameterSection({ title, color, children }: { title: string; color: string; children: React.ReactNode }) {
-    return (
-        <section>
-            <div className="mb-2 text-xs font-medium" style={{ color }}>
-                {title}
-            </div>
-            {children}
-        </section>
     );
 }
 
@@ -278,9 +280,9 @@ function ParameterOption({ active, theme, onClick, children }: { active: boolean
     return (
         <button
             type="button"
-            className="h-8 cursor-pointer rounded-lg px-2 text-xs font-medium transition hover:opacity-75"
+            className="h-10 cursor-pointer whitespace-nowrap rounded-xl px-2 text-xs font-semibold transition hover:opacity-75"
             style={{
-                background: active ? theme.node.text : "transparent",
+                background: active ? theme.node.text : theme.node.fill,
                 color: active ? theme.node.panel : theme.node.text,
                 boxShadow: active ? "none" : `inset 0 0 0 1px ${theme.node.stroke}`,
             }}
@@ -291,74 +293,63 @@ function ParameterOption({ active, theme, onClick, children }: { active: boolean
     );
 }
 
-function RatioGlyph({ label, color }: { label: string; color: string }) {
-    const ratioLabel = label.match(/^(\d+):(\d+)/);
-    if (!ratioLabel) return <span className="h-4 text-[10px] leading-4 opacity-60">AUTO</span>;
-    const width = Number(ratioLabel[1]);
-    const height = Number(ratioLabel[2]);
-    const ratio = width / Math.max(1, height);
-    const glyphWidth = ratio >= 1 ? 18 : Math.max(8, 18 * ratio);
-    const glyphHeight = ratio >= 1 ? Math.max(8, 18 / ratio) : 18;
-    return <span className="rounded-[2px] border" style={{ width: glyphWidth, height: glyphHeight, borderColor: color }} />;
+export function resolveCanvasImageParameters(metadata?: Pick<CanvasNodeMetadata, "imageResolution" | "imageAspectRatio" | "size">) {
+    const explicitResolution = metadata?.imageResolution;
+    const resolution: CanvasImageResolution = explicitResolution === "2k" || explicitResolution === "4k" || explicitResolution === "standard" ? explicitResolution : inferResolution(metadata?.size);
+    const explicitRatio = metadata?.imageAspectRatio;
+    const ratio = explicitRatio && CANVAS_IMAGE_ASPECT_RATIOS.includes(explicitRatio as (typeof CANVAS_IMAGE_ASPECT_RATIOS)[number]) ? explicitRatio : inferRatio(metadata?.size);
+    return { resolution, ratio };
 }
 
-function DimensionInput({
-    prefix,
-    value,
-    disabled,
-    alignToStep,
-    theme,
-    onChange,
-}: {
-    prefix: string;
-    value: number;
-    disabled: boolean;
-    alignToStep: boolean;
-    theme: (typeof canvasThemes)[keyof typeof canvasThemes];
-    onChange: (value: number | null) => void;
-}) {
-    const commit = (input: HTMLInputElement) => {
-        const next = alignDimension(Math.max(1, Math.floor(Number(input.value) || value || 1024)), alignToStep);
-        input.value = String(next);
-        onChange(next);
-    };
-
-    return (
-        <label className="flex h-8 min-w-0 overflow-hidden rounded-lg text-xs" style={{ background: theme.toolbar.panel, color: theme.node.text, opacity: disabled ? 0.5 : 1 }}>
-            <span className="grid w-7 shrink-0 place-items-center" style={{ color: theme.node.muted }}>
-                {prefix}
-            </span>
-            <input
-                type="number"
-                min={1}
-                disabled={disabled}
-                className="min-w-0 flex-1 bg-transparent px-1.5 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                defaultValue={value || ""}
-                key={`${prefix}-${value}`}
-                onBlur={(event) => commit(event.currentTarget)}
-                onKeyDown={(event) => {
-                    if (event.key === "Enter") event.currentTarget.blur();
-                }}
-                onMouseDown={(event) => event.stopPropagation()}
-            />
-        </label>
-    );
+export function resolveCanvasImageSize(resolution: CanvasImageResolution, ratio: string) {
+    if (ratio === "auto") return "auto";
+    const [rawWidth, rawHeight] = ratio.split(":").map(Number);
+    if (!rawWidth || !rawHeight) return "1:1";
+    const landscape = rawWidth >= rawHeight;
+    const ratioValue = landscape ? rawWidth / rawHeight : rawHeight / rawWidth;
+    let longEdge = resolution === "standard" ? 1024 * ratioValue : resolution === "2k" ? 2048 : 3840;
+    let shortEdge = resolution === "standard" ? 1024 : longEdge / ratioValue;
+    const maxPixels = 3840 * 2160;
+    if (longEdge * shortEdge > maxPixels) {
+        const scale = Math.sqrt(maxPixels / (longEdge * shortEdge));
+        longEdge *= scale;
+        shortEdge *= scale;
+    }
+    const alignedLong = Math.max(16, Math.floor(longEdge / 16) * 16);
+    const alignedShort = Math.max(16, Math.round(shortEdge / 16) * 16);
+    return landscape ? `${alignedLong}x${alignedShort}` : `${alignedShort}x${alignedLong}`;
 }
 
-function readSizeDimensions(size: string) {
-    const match = size.match(/^(\d+)x(\d+)$/);
-    if (match) return { width: Number(match[1]), height: Number(match[2]) };
-    const ratio = imageSizeLabel(size).match(/^(\d+):(\d+)/);
-    if (!ratio) return { width: 1024, height: 1024 };
-    const widthRatio = Number(ratio[1]);
-    const heightRatio = Number(ratio[2]);
-    return widthRatio >= heightRatio ? { width: Math.round((1024 * widthRatio) / heightRatio), height: 1024 } : { width: 1024, height: Math.round((1024 * heightRatio) / widthRatio) };
+function inferResolution(size?: string): CanvasImageResolution {
+    const dimensions = size?.match(/^(\d+)x(\d+)$/i);
+    if (!dimensions) return "standard";
+    const longestEdge = Math.max(Number(dimensions[1]), Number(dimensions[2]));
+    if (longestEdge > 2048) return "4k";
+    if (longestEdge > 1024) return "2k";
+    return "standard";
 }
 
-function alignDimension(value: number, enabled: boolean) {
-    return enabled ? Math.ceil(value / 16) * 16 : value;
+function inferRatio(size?: string) {
+    const normalized = size?.trim().toLowerCase();
+    if (normalized && CANVAS_IMAGE_ASPECT_RATIOS.includes(normalized as (typeof CANVAS_IMAGE_ASPECT_RATIOS)[number])) return normalized;
+    const dimensions = normalized?.match(/^(\d+)x(\d+)$/i);
+    if (!dimensions) return "1:1";
+    const target = Number(dimensions[1]) / Math.max(1, Number(dimensions[2]));
+    return CANVAS_IMAGE_ASPECT_RATIOS.filter((option) => option !== "auto").reduce((best, option) => {
+        const [width, height] = option.split(":").map(Number);
+        const [bestWidth, bestHeight] = best.split(":").map(Number);
+        return Math.abs(width / height - target) < Math.abs(bestWidth / bestHeight - target) ? option : best;
+    }, "1:1");
+}
+
+function resolutionLabel(value: CanvasImageResolution) {
+    return RESOLUTION_OPTIONS.find((option) => option.value === value)?.label || "标准";
+}
+
+function ratioLabel(value: string) {
+    return value === "auto" ? "Auto" : value;
 }
 
 function normalizeCount(value: string | number | undefined) {
-    return Math.max(1, Math.min(15, Math.floor(Math.abs(Number(value)) || 1)));
+    return Math.max(1, Math.min(9, Math.floor(Math.abs(Number(value)) || 1)));
 }

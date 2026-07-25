@@ -2456,6 +2456,8 @@ function InfiniteCanvasPage() {
                           model: savedImageMetadata.model || effectiveConfig.imageModel || effectiveConfig.model,
                           quality: savedImageMetadata.quality || effectiveConfig.quality,
                           size: savedImageMetadata.size || effectiveConfig.size,
+                          imageResolution: savedImageMetadata.imageResolution,
+                          imageAspectRatio: savedImageMetadata.imageAspectRatio,
                           background: savedImageMetadata.background ?? effectiveConfig.background,
                           count: "1",
                       }
@@ -2788,6 +2790,8 @@ function InfiniteCanvasPage() {
                 >
                     <CanvasGraphLayer
                         nodes={nodes}
+                        connections={connections}
+                        nodeById={nodeById}
                         hiddenNodeIds={visibleHiddenBatchNodeIds}
                         viewport={viewport}
                         viewportSize={size}
@@ -2877,7 +2881,10 @@ function InfiniteCanvasPage() {
                 </InfiniteCanvas>
 
                 {panelNode && panelNode.type !== CanvasNodeType.Group && !getNodeDefinition(panelNode.type)?.hidePanel ? (
-                    <CanvasNodePanelOverlay node={panelNode} className={`absolute z-[70] max-w-[calc(100vw-32px)] -translate-x-1/2 pt-4 ${panelNode.type === CanvasNodeType.Text ? "w-[640px]" : "w-[600px]"}`}>
+                    <CanvasNodePanelOverlay
+                        node={panelNode}
+                        className={`absolute z-[70] max-w-[calc(100vw-32px)] -translate-x-1/2 pt-4 ${panelNode.type === CanvasNodeType.Image ? "w-[800px]" : panelNode.type === CanvasNodeType.Text ? "w-[640px]" : "w-[600px]"}`}
+                    >
                         {renderNodePanel(panelNode)}
                     </CanvasNodePanelOverlay>
                 ) : null}

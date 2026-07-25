@@ -36,6 +36,8 @@ export type CanvasNodeMetadata = {
     generationType?: CanvasImageGenerationType;
     model?: string;
     size?: string;
+    imageResolution?: "standard" | "2k" | "4k";
+    imageAspectRatio?: string;
     quality?: string;
     background?: string;
     count?: number;
