@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bot, ChevronsDown, ChevronsUp, Download, Home, Upload } from "lucide-react";
+import { ChevronsDown, ChevronsUp, Download, Home, Upload } from "lucide-react";
 import { Modal } from "antd";
 
 import { UserStatusActions } from "@/components/layout/user-status-actions";
@@ -8,27 +8,14 @@ import { useThemeStore } from "@/stores/use-theme-store";
 
 const CANVAS_HEADER_COLLAPSED_KEY = "canvas-header-toolbar-collapsed";
 
-export function CanvasTopBar({
-    onHome,
-    onExportProject,
-    onImportImage,
-    onOpenPlugins,
-    agentOpen,
-    onToggleAgent,
-}: {
-    onHome: () => void;
-    onExportProject: () => void;
-    onImportImage: () => void;
-    onOpenPlugins: () => void;
-    agentOpen: boolean;
-    onToggleAgent: () => void;
-}) {
+export function CanvasTopBar({ onHome, onExportProject, onImportImage, onOpenPlugins }: { onHome: () => void; onExportProject: () => void; onImportImage: () => void; onOpenPlugins: () => void }) {
     const colorTheme = useThemeStore((state) => state.theme);
     const theme = canvasThemes[colorTheme];
     const [shortcutsOpen, setShortcutsOpen] = useState(false);
     const [headerCollapsed, setHeaderCollapsed] = useState(() => typeof window !== "undefined" && localStorage.getItem(CANVAS_HEADER_COLLAPSED_KEY) === "1");
-    const actionClass = "inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-lg px-1.5 text-xs font-medium transition hover:bg-black/5 dark:hover:bg-white/10 xl:h-8 xl:gap-1.5 xl:px-2 xl:text-sm [&_svg]:size-3.5 xl:[&_svg]:size-4";
-    const toggleClass = "inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-lg px-1.5 text-xs font-medium transition hover:bg-black/5 dark:hover:bg-white/10 xl:h-8 xl:px-2 xl:text-sm [&_svg]:size-3.5 xl:[&_svg]:size-4";
+    const actionClass =
+        "inline-flex h-7 shrink-0 cursor-pointer items-center justify-center gap-1 rounded-lg px-1.5 text-xs font-medium transition hover:bg-black/5 dark:hover:bg-white/10 xl:h-8 xl:gap-1.5 xl:px-2 xl:text-sm [&_svg]:size-3.5 xl:[&_svg]:size-4";
+    const toggleClass = "inline-flex h-7 shrink-0 cursor-pointer items-center justify-center gap-1 rounded-[3px] px-1.5 text-xs font-medium transition hover:bg-black/5 dark:hover:bg-white/10 xl:h-8 xl:px-2 xl:text-sm [&_svg]:size-3.5 xl:[&_svg]:size-4";
 
     const toggleHeader = () =>
         setHeaderCollapsed((current) => {
@@ -41,33 +28,46 @@ export function CanvasTopBar({
         <>
             <div className={`pointer-events-none absolute inset-x-0 top-0 z-50 flex h-12 justify-center px-2 xl:h-16 xl:px-4 ${headerCollapsed ? "items-start" : "items-center"}`}>
                 <div
-                    className={`pointer-events-auto flex items-center overflow-hidden border shadow-sm backdrop-blur ${headerCollapsed ? "h-6 w-12 justify-center rounded-none xl:h-7 xl:w-[60px]" : "h-8 max-w-[calc(100%_-_16px)] rounded-xl xl:h-10"}`}
+                    className={`pointer-events-auto flex items-center overflow-hidden backdrop-blur ${headerCollapsed ? "h-6 w-12 justify-center rounded-[3px] border-0 xl:h-7 xl:w-[60px]" : "h-8 max-w-[calc(100%_-_16px)] rounded-xl border shadow-sm xl:h-10"}`}
                     style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
                 >
                     {!headerCollapsed ? (
                         <>
                             <div className="thin-scrollbar flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-0.5 xl:px-1">
                                 <button type="button" className={actionClass} onClick={onHome}>
-                                    <Home />主页
+                                    <Home />
+                                    主页
                                 </button>
                                 <span className="mx-0.5 h-4 w-px shrink-0 xl:h-5" style={{ background: theme.toolbar.border }} />
                                 <button type="button" className={actionClass} onClick={onImportImage}>
-                                    <Upload />导入资产
+                                    <Upload />
+                                    导入资产
                                 </button>
                                 <button type="button" className={actionClass} onClick={onExportProject}>
-                                    <Download />导出当前画布
+                                    <Download />
+                                    导出当前画布
                                 </button>
                                 <span className="mx-0.5 h-4 w-px shrink-0 xl:h-5" style={{ background: theme.toolbar.border }} />
                                 <UserStatusActions variant="canvas" onOpenShortcuts={() => setShortcutsOpen(true)} onOpenPlugins={onOpenPlugins} />
-                                <button type="button" className={actionClass} style={{ background: agentOpen ? theme.toolbar.activeBg : "transparent" }} onClick={onToggleAgent}>
-                                    <Bot />Agent
-                                </button>
                             </div>
                             <span className="mx-0.5 h-4 w-px shrink-0 xl:h-5" style={{ background: theme.toolbar.border }} />
                         </>
                     ) : null}
-                    <button type="button" className={headerCollapsed ? "inline-flex h-5 w-10 items-center justify-center xl:h-6 xl:w-12 [&_svg]:size-3.5 xl:[&_svg]:size-4" : toggleClass} onClick={toggleHeader} aria-label={headerCollapsed ? "展开顶部工具栏" : "收起顶部工具栏"} aria-expanded={!headerCollapsed}>
-                        {headerCollapsed ? <ChevronsDown /> : <><ChevronsUp /><span>收起</span></>}
+                    <button
+                        type="button"
+                        className={headerCollapsed ? "inline-flex h-5 w-10 cursor-pointer items-center justify-center rounded-[3px] xl:h-6 xl:w-12 [&_svg]:size-3.5 xl:[&_svg]:size-4" : toggleClass}
+                        onClick={toggleHeader}
+                        aria-label={headerCollapsed ? "展开顶部工具栏" : "收起顶部工具栏"}
+                        aria-expanded={!headerCollapsed}
+                    >
+                        {headerCollapsed ? (
+                            <ChevronsDown />
+                        ) : (
+                            <>
+                                <ChevronsUp />
+                                <span>收起</span>
+                            </>
+                        )}
                     </button>
                 </div>
             </div>

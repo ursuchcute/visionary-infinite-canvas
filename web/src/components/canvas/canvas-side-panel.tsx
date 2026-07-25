@@ -85,7 +85,7 @@ export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onInsertA
         <motion.div
             className="relative z-[60] flex h-full shrink-0"
             initial={{ width: 0, opacity: 0 }}
-            animate={{ width: panelOpen ? width + 1 : 0, opacity: panelOpen ? 1 : 0 }}
+            animate={{ width: panelOpen ? width : 0, opacity: panelOpen ? 1 : 0 }}
             transition={{ duration: resizing ? 0 : PANEL_MOTION_SECONDS, ease: PANEL_EASE }}
             style={{ overflow: "clip", pointerEvents: panelClosing ? "none" : undefined }}
         >
@@ -111,6 +111,7 @@ export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onInsertA
                         <CanvasPromptsTab onInsert={onInsertAsset} theme={theme} />
                     )}
                 </div>
+                <span aria-hidden className="pointer-events-none absolute right-0 top-1/2 z-30 h-12 w-px -translate-y-1/2 xl:h-[60px]" style={{ background: theme.toolbar.panel }} />
                 <button type="button" className="absolute inset-y-0 right-0 z-40 w-4 translate-x-1/2 cursor-col-resize" onPointerDown={startResize} aria-label="调整左侧面板宽度" />
             </motion.aside>
         </motion.div>
@@ -128,7 +129,7 @@ export function CanvasSidePanelToggle() {
                 type="button"
                 onClick={togglePanel}
                 aria-label={panelOpen ? "收起面板" : "展开面板"}
-                className="absolute left-0 top-1/2 z-[65] grid h-12 w-6 -translate-y-1/2 place-items-center rounded-none border shadow-sm backdrop-blur transition hover:bg-black/5 dark:hover:bg-white/10 xl:h-[60px] xl:w-7 [&_svg]:size-3.5 xl:[&_svg]:size-4"
+                className="absolute left-0 top-1/2 z-[65] grid h-12 w-6 -translate-y-1/2 cursor-pointer place-items-center rounded-l-none rounded-r-[3px] border border-l-0 backdrop-blur transition hover:bg-black/5 dark:hover:bg-white/10 xl:h-[60px] xl:w-7 [&_svg]:size-3.5 xl:[&_svg]:size-4"
                 style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
             >
                 {panelOpen ? <ChevronLeft /> : <ChevronRight />}
@@ -139,7 +140,7 @@ export function CanvasSidePanelToggle() {
 
 function TabButton({ label, active, theme, onClick }: { label: string; active: boolean; theme: CanvasTheme; onClick: () => void }) {
     return (
-        <button type="button" onClick={onClick} className="relative pb-1.5 text-sm font-semibold transition-opacity" style={{ color: theme.node.text, opacity: active ? 1 : 0.45 }}>
+        <button type="button" onClick={onClick} className="relative cursor-pointer pb-1.5 text-sm font-semibold transition-opacity" style={{ color: theme.node.text, opacity: active ? 1 : 0.45 }}>
             {label}
             {active ? <motion.span layoutId="sidePanelTabIndicator" className="absolute inset-x-0 -bottom-px h-0.5 rounded-full" style={{ background: theme.toolbar.activeText }} transition={{ type: "spring", stiffness: 500, damping: 34 }} /> : null}
         </button>
@@ -497,21 +498,23 @@ const CanvasPromptsTab = memo(function CanvasPromptsTab({ onInsert, theme }: { o
                     />
                     {enabledSources.length ? (
                         <>
-                        {enabledSources.map((source) => (
-                            <PromptSourceGroup
-                                key={source.id}
-                                sourceId={source.id}
-                                sourceName={source.name}
-                                keyword={keyword}
-                                open={!!expanded[source.id]}
-                                theme={theme}
-                                onToggle={() => setExpanded((prev) => ({ ...prev, [source.id]: !prev[source.id] }))}
-                                onInsert={onInsert}
-                                onView={setDetail}
-                            />
-                        ))}
+                            {enabledSources.map((source) => (
+                                <PromptSourceGroup
+                                    key={source.id}
+                                    sourceId={source.id}
+                                    sourceName={source.name}
+                                    keyword={keyword}
+                                    open={!!expanded[source.id]}
+                                    theme={theme}
+                                    onToggle={() => setExpanded((prev) => ({ ...prev, [source.id]: !prev[source.id] }))}
+                                    onInsert={onInsert}
+                                    onView={setDetail}
+                                />
+                            ))}
                         </>
-                    ) : personalPrompts.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无提示词" className="pt-12" /> : null}
+                    ) : personalPrompts.length === 0 ? (
+                        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无提示词" className="pt-12" />
+                    ) : null}
                 </div>
             </div>
             <PromptDetailDialog prompt={detail} onClose={() => setDetail(null)} onCopy={(prompt) => void copyPrompt(prompt)} />
@@ -519,7 +522,23 @@ const CanvasPromptsTab = memo(function CanvasPromptsTab({ onInsert, theme }: { o
     );
 });
 
-function PersonalPromptGroup({ items, keyword, open, theme, onToggle, onInsert, onView }: { items: Prompt[]; keyword: string; open: boolean; theme: CanvasTheme; onToggle: () => void; onInsert: (payload: InsertAssetPayload) => void; onView: (prompt: Prompt) => void }) {
+function PersonalPromptGroup({
+    items,
+    keyword,
+    open,
+    theme,
+    onToggle,
+    onInsert,
+    onView,
+}: {
+    items: Prompt[];
+    keyword: string;
+    open: boolean;
+    theme: CanvasTheme;
+    onToggle: () => void;
+    onInsert: (payload: InsertAssetPayload) => void;
+    onView: (prompt: Prompt) => void;
+}) {
     const showResults = open || !!keyword.trim();
     const filtered = useMemo(() => {
         const query = keyword.trim().toLowerCase();
@@ -536,7 +555,9 @@ function PersonalPromptGroup({ items, keyword, open, theme, onToggle, onInsert, 
             </button>
             {showResults ? (
                 <div className="space-y-1.5 px-1 pb-2 pt-1">
-                    {filtered.map((item) => <PromptRow key={item.id} item={item} theme={theme} onInsert={() => onInsert({ kind: "text", content: item.prompt, title: item.title })} onView={() => onView(item)} />)}
+                    {filtered.map((item) => (
+                        <PromptRow key={item.id} item={item} theme={theme} onInsert={() => onInsert({ kind: "text", content: item.prompt, title: item.title })} onView={() => onView(item)} />
+                    ))}
                     {!filtered.length ? <div className="py-4 text-center text-xs opacity-40">{keyword.trim() ? "无匹配提示词" : "还没有收藏提示词"}</div> : null}
                 </div>
             ) : null}

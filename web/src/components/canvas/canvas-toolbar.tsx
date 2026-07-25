@@ -68,7 +68,7 @@ export function CanvasToolbar({
     // 扩展(插件)节点,随注册表变化实时更新
     useNodeRegistryVersion();
     const extensionDefs = listNodeDefinitions().filter((def) => def.showInCreateMenu !== false && getNodePluginId(def.type) !== "builtin");
-    const dockStyle = { background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item, boxShadow: colorTheme === "dark" ? "0 18px 45px rgba(0,0,0,.32)" : "0 16px 40px rgba(28,25,23,.12)" };
+    const dockStyle = { background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item, boxShadow: toolbarCollapsed ? "none" : colorTheme === "dark" ? "0 18px 45px rgba(0,0,0,.32)" : "0 16px 40px rgba(28,25,23,.12)" };
     const hoverStyle = { background: theme.toolbar.itemHover, color: theme.toolbar.activeText };
     const activeStyle = { background: theme.toolbar.activeBg, color: theme.toolbar.activeText };
     const tip = hovered === "tool-toggle" ? (toolbarCollapsed ? "展开工具栏" : "收起工具栏") : hovered ? toolLabel(hovered) : "";
@@ -102,7 +102,7 @@ export function CanvasToolbar({
             {tip ? <DockTip label={tip} x={tipX} theme={theme} /> : null}
             <div
                 ref={wrapRef}
-                className={`thin-scrollbar pointer-events-auto flex items-center overflow-x-auto border shadow-lg backdrop-blur [&>*]:shrink-0 ${toolbarCollapsed ? "h-6 w-12 justify-center gap-0 rounded-none px-0 xl:h-7 xl:w-[60px]" : "h-10 max-w-full gap-0.5 rounded-xl px-1 xl:h-14 xl:gap-1 xl:px-2"}`}
+                className={`thin-scrollbar pointer-events-auto flex items-center overflow-x-auto backdrop-blur [&>*]:shrink-0 ${toolbarCollapsed ? "h-6 w-12 justify-center gap-0 rounded-[3px] border-0 px-0 xl:h-7 xl:w-[60px]" : "h-10 max-w-full gap-0.5 rounded-xl border px-1 shadow-lg xl:h-14 xl:gap-1 xl:px-2"}`}
                 style={dockStyle}
             >
                 {!toolbarCollapsed ? (
@@ -110,90 +110,108 @@ export function CanvasToolbar({
                         <ToolbarButton id="tool-hand" label="移动/选择" active={!selectedCount} hovered={hovered} activeStyle={activeStyle} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onDeselect}>
                             <Hand className="size-4.5" />
                         </ToolbarButton>
-                <ToolbarButton id="tool-undo" label="撤销" disabled={!canUndo} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onUndo}>
-                    <Undo2 className="size-4.5" />
-                </ToolbarButton>
-                <ToolbarButton id="tool-redo" label="重做" disabled={!canRedo} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onRedo}>
-                    <Redo2 className="size-4.5" />
-                </ToolbarButton>
-                <Divider theme={theme} />
-                <ToolbarButton id="tool-text" label="文本" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddText}>
-                    <Type className="size-4.5" />
-                </ToolbarButton>
-                <ToolbarButton id="tool-image" label="图片" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddImage}>
-                    <ImageIcon className="size-4.5" />
-                </ToolbarButton>
-                <ToolbarButton id="tool-video" label="视频" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddVideo}>
-                    <Video className="size-4.5" />
-                </ToolbarButton>
-                <ToolbarButton id="tool-audio" label="音频" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddAudio}>
-                    <Music2 className="size-4.5" />
-                </ToolbarButton>
-                <ToolbarButton id="tool-config" label="生成配置" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddConfig}>
-                    <Settings2 className="size-4.5" />
-                </ToolbarButton>
-                <ToolbarButton id="tool-group" label="组" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddGroup}>
-                    <Group className="size-4.5" />
-                </ToolbarButton>
-                {extensionDefs.length ? (
-                    <ToolbarButton
-                        id="tool-extensions"
-                        label="扩展节点"
-                        active={extensionsOpen}
-                        hovered={hovered}
-                        activeStyle={activeStyle}
-                        hoverStyle={hoverStyle}
-                        wrapRef={wrapRef}
-                        onTipX={setTipX}
-                        onHover={setHovered}
-                        onClick={(event) => {
-                            setExtPanelX(getTipX(wrapRef.current, event.currentTarget));
-                            setAppearanceOpen(false);
-                            setExtensionsOpen((value) => !value);
-                        }}
-                    >
-                        <Puzzle className="size-4.5" />
-                    </ToolbarButton>
-                ) : null}
-                <ToolbarButton id="tool-upload" label="上传资产" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onUpload}>
-                    <Upload className="size-4.5" />
-                </ToolbarButton>
-                <Divider theme={theme} />
-                <ToolbarButton
-                    id="tool-style"
-                    label="画布外观"
-                    active={appearanceOpen}
-                    hovered={hovered}
-                    activeStyle={activeStyle}
-                    hoverStyle={hoverStyle}
-                    wrapRef={wrapRef}
-                    onTipX={setTipX}
-                    onHover={setHovered}
-                    onClick={(event) => {
-                        setPanelX(getTipX(wrapRef.current, event.currentTarget));
-                        setExtensionsOpen(false);
-                        setAppearanceOpen((value) => !value);
-                    }}
-                >
-                    <Palette className="size-4.5" />
-                </ToolbarButton>
-                {selectedCount ? (
-                    <>
-                        <Divider theme={theme} />
-                        <ToolbarButton id="tool-delete" label="删除选中" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onDelete} danger>
-                            <Trash2 className="size-4.5" />
+                        <ToolbarButton id="tool-undo" label="撤销" disabled={!canUndo} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onUndo}>
+                            <Undo2 className="size-4.5" />
                         </ToolbarButton>
-                    </>
-                ) : null}
-                <Divider theme={theme} />
+                        <ToolbarButton id="tool-redo" label="重做" disabled={!canRedo} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onRedo}>
+                            <Redo2 className="size-4.5" />
+                        </ToolbarButton>
+                        <Divider theme={theme} />
+                        <ToolbarButton id="tool-text" label="文本" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddText}>
+                            <Type className="size-4.5" />
+                        </ToolbarButton>
+                        <ToolbarButton id="tool-image" label="图片" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddImage}>
+                            <ImageIcon className="size-4.5" />
+                        </ToolbarButton>
+                        <ToolbarButton id="tool-video" label="视频" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddVideo}>
+                            <Video className="size-4.5" />
+                        </ToolbarButton>
+                        <ToolbarButton id="tool-audio" label="音频" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddAudio}>
+                            <Music2 className="size-4.5" />
+                        </ToolbarButton>
+                        <ToolbarButton id="tool-config" label="生成配置" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddConfig}>
+                            <Settings2 className="size-4.5" />
+                        </ToolbarButton>
+                        <ToolbarButton id="tool-group" label="组" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddGroup}>
+                            <Group className="size-4.5" />
+                        </ToolbarButton>
+                        {extensionDefs.length ? (
+                            <ToolbarButton
+                                id="tool-extensions"
+                                label="扩展节点"
+                                active={extensionsOpen}
+                                hovered={hovered}
+                                activeStyle={activeStyle}
+                                hoverStyle={hoverStyle}
+                                wrapRef={wrapRef}
+                                onTipX={setTipX}
+                                onHover={setHovered}
+                                onClick={(event) => {
+                                    setExtPanelX(getTipX(wrapRef.current, event.currentTarget));
+                                    setAppearanceOpen(false);
+                                    setExtensionsOpen((value) => !value);
+                                }}
+                            >
+                                <Puzzle className="size-4.5" />
+                            </ToolbarButton>
+                        ) : null}
+                        <ToolbarButton id="tool-upload" label="上传资产" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onUpload}>
+                            <Upload className="size-4.5" />
+                        </ToolbarButton>
+                        <Divider theme={theme} />
+                        <ToolbarButton
+                            id="tool-style"
+                            label="画布外观"
+                            active={appearanceOpen}
+                            hovered={hovered}
+                            activeStyle={activeStyle}
+                            hoverStyle={hoverStyle}
+                            wrapRef={wrapRef}
+                            onTipX={setTipX}
+                            onHover={setHovered}
+                            onClick={(event) => {
+                                setPanelX(getTipX(wrapRef.current, event.currentTarget));
+                                setExtensionsOpen(false);
+                                setAppearanceOpen((value) => !value);
+                            }}
+                        >
+                            <Palette className="size-4.5" />
+                        </ToolbarButton>
+                        {selectedCount ? (
+                            <>
+                                <Divider theme={theme} />
+                                <ToolbarButton id="tool-delete" label="删除选中" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onDelete} danger>
+                                    <Trash2 className="size-4.5" />
+                                </ToolbarButton>
+                            </>
+                        ) : null}
+                        <Divider theme={theme} />
                         <ToolbarButton id="tool-clear" label="清空画布" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onClear} danger>
                             <Eraser className="size-4.5" />
                         </ToolbarButton>
                     </>
                 ) : null}
                 {!toolbarCollapsed ? <Divider theme={theme} /> : null}
-                <ToolbarButton id="tool-toggle" label={toolbarCollapsed ? "展开工具栏" : "收起工具栏"} hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={toggleToolbar} compact={toolbarCollapsed} labeled={!toolbarCollapsed}>
-                    {toolbarCollapsed ? <ChevronsUp className="size-4.5" /> : <span className="inline-flex items-center gap-1"><ChevronsDown className="size-4.5" /><span>收起</span></span>}
+                <ToolbarButton
+                    id="tool-toggle"
+                    label={toolbarCollapsed ? "展开工具栏" : "收起工具栏"}
+                    hovered={hovered}
+                    hoverStyle={hoverStyle}
+                    wrapRef={wrapRef}
+                    onTipX={setTipX}
+                    onHover={setHovered}
+                    onClick={toggleToolbar}
+                    compact={toolbarCollapsed}
+                    labeled={!toolbarCollapsed}
+                >
+                    {toolbarCollapsed ? (
+                        <ChevronsUp className="size-4.5" />
+                    ) : (
+                        <span className="inline-flex items-center gap-1">
+                            <ChevronsDown className="size-4.5" />
+                            <span>收起</span>
+                        </span>
+                    )}
                 </ToolbarButton>
             </div>
 
@@ -329,7 +347,7 @@ function ToolbarButton({
         <Button
             type="text"
             aria-label={label}
-            className={`${compact ? "!h-5 !w-10 !min-w-10 xl:!h-6 xl:!w-12 xl:!min-w-12" : labeled ? "!h-7 !w-auto !min-w-0 !px-1.5 !text-xs xl:!h-8 xl:!px-2 xl:!text-sm" : "!h-7 !w-7 !min-w-7 xl:!h-8 xl:!w-8 xl:!min-w-8"} !p-0 [&_.ant-btn-icon]:!m-0 [&_svg]:size-3.5 xl:[&_svg]:size-4.5`}
+            className={`${compact ? "!h-5 !w-10 !min-w-10 !rounded-[3px] !border-0 xl:!h-6 xl:!w-12 xl:!min-w-12" : labeled ? "!h-7 !w-auto !min-w-0 !rounded-[3px] !px-1.5 !text-xs xl:!h-8 xl:!px-2 xl:!text-sm" : "!h-7 !w-7 !min-w-7 xl:!h-8 xl:!w-8 xl:!min-w-8"} !cursor-pointer !p-0 disabled:!cursor-not-allowed [&_.ant-btn-icon]:!m-0 [&_svg]:size-3.5 xl:[&_svg]:size-4.5`}
             disabled={disabled}
             style={active ? activeStyle : hovered === id && !disabled ? hoverStyle : { color: danger ? "#f87171" : theme.toolbar.item, opacity: disabled ? 0.35 : 1 }}
             icon={children}

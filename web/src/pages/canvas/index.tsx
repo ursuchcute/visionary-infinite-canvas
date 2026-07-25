@@ -78,7 +78,7 @@ export default function CanvasPage() {
         "!h-11 !rounded-2xl !border-stone-950 !bg-stone-950 !px-5 !font-medium !text-white !shadow-[0_0_24px_rgba(0,0,0,.10)] hover:!border-stone-700 hover:!bg-stone-800 dark:!border-white dark:!bg-white dark:!text-black dark:!shadow-[0_0_24px_rgba(255,255,255,.10)] dark:hover:!border-stone-200 dark:hover:!bg-stone-200";
 
     return (
-        <main className="relative isolate h-full overflow-auto bg-[#f5f5f3] text-stone-950 dark:bg-[#050505] dark:text-stone-100">
+        <main className="relative isolate h-full overflow-auto bg-[#f5f5f3] text-stone-950 [&_button:not(:disabled)]:cursor-pointer dark:bg-[#050505] dark:text-stone-100">
             <div
                 aria-hidden
                 className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[520px] bg-[radial-gradient(circle_at_50%_-15%,rgba(59,130,246,.12),transparent_46%)] dark:bg-[radial-gradient(circle_at_50%_-15%,rgba(59,130,246,.16),transparent_46%)]"

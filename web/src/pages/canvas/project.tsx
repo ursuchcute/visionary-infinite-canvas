@@ -157,8 +157,6 @@ function InfiniteCanvasPage() {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const projectId = params.id || "";
-    const agentPanelOpen = useAgentStore((state) => state.panelOpen);
-    const toggleAgentPanel = useAgentStore((state) => state.togglePanel);
     const openAgentPanel = useAgentStore((state) => state.openPanel);
     const containerRef = useRef<HTMLDivElement>(null);
     const imageInputRef = useRef<HTMLInputElement>(null);
@@ -2767,11 +2765,11 @@ function InfiniteCanvasPage() {
     if (!projectLoaded) return <CanvasRefreshShell />;
 
     return (
-        <main className="flex h-full min-h-0 overflow-hidden" style={{ background: theme.canvas.background, color: theme.node.text }}>
+        <main className="flex h-full min-h-0 overflow-hidden [&_button:not(:disabled)]:cursor-pointer" style={{ background: theme.canvas.background, color: theme.node.text }}>
             <CanvasSidePanel nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={focusNode} onInsertAsset={handleAssetInsert} />
             <section className="relative min-w-0 flex-1 overflow-hidden">
                 <CanvasSidePanelToggle />
-                <CanvasTopBar onHome={() => navigate("/")} onExportProject={exportCurrentProject} onImportImage={() => handleUploadRequest()} onOpenPlugins={() => setPluginManagerOpen(true)} agentOpen={agentPanelOpen} onToggleAgent={toggleAgentPanel} />
+                <CanvasTopBar onHome={() => navigate("/")} onExportProject={exportCurrentProject} onImportImage={() => handleUploadRequest()} onOpenPlugins={() => setPluginManagerOpen(true)} />
 
                 <InfiniteCanvas
                     containerRef={containerRef}
