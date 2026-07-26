@@ -77,36 +77,42 @@ export default function CanvasPage() {
         "!h-11 !rounded-2xl !border-stone-300/80 !bg-white/75 !px-4 !text-stone-700 !shadow-none backdrop-blur transition hover:!border-stone-400 hover:!bg-white dark:!border-white/10 dark:!bg-white/[.04] dark:!text-stone-200 dark:hover:!border-white/20 dark:hover:!bg-white/[.08]";
     const primaryButtonClass =
         "!h-11 !rounded-2xl !border-stone-950 !bg-stone-950 !px-5 !font-medium !text-white !shadow-[0_0_24px_rgba(0,0,0,.10)] hover:!border-stone-700 hover:!bg-stone-800 dark:!border-white dark:!bg-white dark:!text-black dark:!shadow-[0_0_24px_rgba(255,255,255,.10)] dark:hover:!border-stone-200 dark:hover:!bg-stone-200";
+    const hasProjects = hydrated && projects.length > 0;
+    const showHeader = Boolean(selectedIds.length) || !VISIONARY_HOSTED || hasProjects;
 
     return (
         <main className="relative isolate h-full overflow-auto bg-transparent text-stone-950 [&_button:not(:disabled)]:cursor-pointer dark:text-stone-100">
             <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 py-6 lg:px-8">
-                <header className="flex flex-wrap items-center justify-start gap-2.5">
-                    {selectedIds.length ? (
-                        <>
-                            <Button className={secondaryButtonClass} disabled={!hydrated} icon={<Download className="size-4" />} onClick={() => void exportSelectedProjects()}>
-                                导出选中
+                {showHeader ? (
+                    <header className="flex flex-wrap items-center justify-start gap-2.5">
+                        {selectedIds.length ? (
+                            <>
+                                <Button className={secondaryButtonClass} disabled={!hydrated} icon={<Download className="size-4" />} onClick={() => void exportSelectedProjects()}>
+                                    导出选中
+                                </Button>
+                                <Button className={`${secondaryButtonClass} !text-red-500 dark:!text-red-400`} disabled={!hydrated} onClick={() => setDeleteIds(selectedIds)}>
+                                    删除选中
+                                </Button>
+                            </>
+                        ) : null}
+                        {!VISIONARY_HOSTED ? (
+                            <Button className={secondaryButtonClass} disabled={!hydrated} icon={<FileUp className="size-4" />} onClick={() => inputRef.current?.click()}>
+                                导入画布
                             </Button>
-                            <Button className={`${secondaryButtonClass} !text-red-500 dark:!text-red-400`} disabled={!hydrated} onClick={() => setDeleteIds(selectedIds)}>
-                                删除选中
+                        ) : null}
+                        {hasProjects ? (
+                            <Button className={primaryButtonClass} icon={<Plus className="size-4" />} onClick={createAndEnter}>
+                                新建画布
                             </Button>
-                        </>
-                    ) : null}
-                    {!VISIONARY_HOSTED ? (
-                        <Button className={secondaryButtonClass} disabled={!hydrated} icon={<FileUp className="size-4" />} onClick={() => inputRef.current?.click()}>
-                            导入画布
-                        </Button>
-                    ) : null}
-                    <Button className={primaryButtonClass} disabled={!hydrated} icon={<Plus className="size-4" />} onClick={createAndEnter}>
-                        新建画布
-                    </Button>
-                </header>
+                        ) : null}
+                    </header>
+                ) : null}
 
                 {!hydrated ? (
                     <section className="flex min-h-[380px] items-center justify-center rounded-[28px] border border-black/[.08] bg-white/70 text-sm text-stone-500 shadow-[0_10px_40px_rgba(0,0,0,.06)] backdrop-blur dark:border-white/[.08] dark:bg-white/[.03] dark:shadow-[0_10px_40px_rgba(0,0,0,.25)]">
                         正在加载画布...
                     </section>
-                ) : projects.length ? (
+                ) : hasProjects ? (
                     <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                         {projects.map((project) => (
                             <CanvasProjectCard key={project.id} project={project} />
@@ -120,7 +126,6 @@ export default function CanvasPage() {
                                 <Sparkles className="size-5" />
                             </span>
                             <h2 className="mt-5 text-2xl font-semibold tracking-tight">开始第一张无限画布</h2>
-                            <p className="mt-3 text-sm leading-6 text-stone-500">新建画布后，可以自由连接图片、文本、配置与生成结果，并持续扩展您的创作过程。</p>
                             <Button className={`${primaryButtonClass} mt-7`} icon={<Plus className="size-4" />} onClick={createAndEnter}>
                                 新建画布
                             </Button>

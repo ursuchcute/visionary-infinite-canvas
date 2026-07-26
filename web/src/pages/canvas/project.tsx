@@ -2875,7 +2875,7 @@ function InfiniteCanvasPage() {
             <CanvasSidePanel nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={focusNode} onInsertAsset={handleAssetInsert} />
             <section className="relative min-w-0 flex-1 overflow-hidden">
                 <CanvasSidePanelToggle />
-                <CanvasTopBar onHome={() => navigate("/")} onExportProject={exportCurrentProject} onImportImage={() => handleUploadRequest()} onOpenPlugins={() => setPluginManagerOpen(true)} />
+                <CanvasTopBar onExportProject={exportCurrentProject} onImportImage={() => handleUploadRequest()} onOpenPlugins={() => setPluginManagerOpen(true)} />
 
                 <InfiniteCanvas
                     containerRef={containerRef}

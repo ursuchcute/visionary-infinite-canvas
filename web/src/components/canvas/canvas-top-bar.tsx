@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronsDown, ChevronsUp, Download, Home, Upload } from "lucide-react";
+import { ChevronsDown, ChevronsUp, Download, Upload } from "lucide-react";
 import { Modal } from "antd";
 
 import { UserStatusActions } from "@/components/layout/user-status-actions";
@@ -9,7 +9,7 @@ import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
 
 const CANVAS_HEADER_COLLAPSED_KEY = "canvas-header-toolbar-collapsed";
 
-export function CanvasTopBar({ onHome, onExportProject, onImportImage, onOpenPlugins }: { onHome: () => void; onExportProject: () => void; onImportImage: () => void; onOpenPlugins?: () => void }) {
+export function CanvasTopBar({ onExportProject, onImportImage, onOpenPlugins }: { onExportProject: () => void; onImportImage: () => void; onOpenPlugins?: () => void }) {
     const colorTheme = useThemeStore((state) => state.theme);
     const theme = canvasThemes[colorTheme];
     const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -27,7 +27,7 @@ export function CanvasTopBar({ onHome, onExportProject, onImportImage, onOpenPlu
 
     return (
         <>
-            <div className={`pointer-events-none absolute inset-x-0 top-0 z-50 flex h-12 px-2 xl:h-16 xl:px-4 ${VISIONARY_HOSTED ? "justify-start pr-56 xl:pr-60" : "justify-center"} ${headerCollapsed ? "items-start" : "items-center"}`}>
+            <div className={`pointer-events-none absolute inset-x-0 top-0 z-50 flex h-12 justify-center px-2 xl:h-16 xl:px-4 ${headerCollapsed ? "items-start" : "items-center"}`}>
                 <div
                     className={`pointer-events-auto flex items-center overflow-hidden backdrop-blur ${headerCollapsed ? "h-6 w-12 justify-center rounded-[3px] border-0 xl:h-7 xl:w-[60px]" : "h-8 max-w-[calc(100%_-_16px)] rounded-xl border shadow-sm xl:h-10"}`}
                     style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
@@ -35,11 +35,6 @@ export function CanvasTopBar({ onHome, onExportProject, onImportImage, onOpenPlu
                     {!headerCollapsed ? (
                         <>
                             <div className="thin-scrollbar flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-0.5 xl:px-1">
-                                <button type="button" className={actionClass} onClick={onHome}>
-                                    <Home />
-                                    主页
-                                </button>
-                                <span className="mx-0.5 h-4 w-px shrink-0 xl:h-5" style={{ background: theme.toolbar.border }} />
                                 <button type="button" className={actionClass} onClick={onImportImage}>
                                     <Upload />
                                     导入资产
@@ -72,14 +67,6 @@ export function CanvasTopBar({ onHome, onExportProject, onImportImage, onOpenPlu
                     </button>
                 </div>
             </div>
-            {VISIONARY_HOSTED ? (
-                <div
-                    className="pointer-events-auto absolute right-2 top-2 z-50 max-w-52 overflow-hidden rounded-lg border shadow-sm backdrop-blur xl:right-4 xl:top-3"
-                    style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
-                >
-                    <UserStatusActions variant="canvas" showConfig={false} />
-                </div>
-            ) : null}
             <Modal title="快捷键" width={960} open={shortcutsOpen} onCancel={() => setShortcutsOpen(false)} footer={null} centered>
                 <div className="thin-scrollbar grid max-h-[70vh] grid-cols-1 gap-x-8 gap-y-2 overflow-y-auto border-t pt-4 text-sm sm:grid-cols-2" style={{ borderColor: theme.node.stroke }}>
                     <Shortcut keys={["按住 Ctrl（win）/command（mac）", "鼠标左键"]} value="框选多个节点" />
