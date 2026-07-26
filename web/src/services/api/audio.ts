@@ -3,7 +3,7 @@ import axios from "axios";
 import { audioMimeType, normalizeAudioFormatValue, normalizeAudioSpeedValue, normalizeAudioVoiceValue } from "@/lib/audio-generation";
 import { uploadMediaFile, type UploadedFile } from "@/services/file-storage";
 import { buildApiUrl, resolveModelRequestConfig, resolveModelScript, type AiConfig } from "@/stores/use-config-store";
-import { runModelPlugin } from "./model-plugin";
+import { runModelPlugin } from "@/services/api/model-plugin";
 
 type RequestOptions = { signal?: AbortSignal };
 

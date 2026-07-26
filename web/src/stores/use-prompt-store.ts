@@ -2,7 +2,9 @@ import { nanoid } from "nanoid";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
 import { localForageStorage } from "@/lib/localforage-storage";
+import { visionaryHostStorageKey } from "@/services/api/visionary-host/storage-namespace";
 
 export type PersonalPrompt = {
     id: string;
@@ -21,6 +23,12 @@ export type PersonalPrompt = {
 };
 
 export type PersonalPromptInput = Omit<PersonalPrompt, "id" | "createdAt" | "updatedAt">;
+
+const promptStorage = {
+    getItem: (name: string) => localForageStorage.getItem(visionaryHostStorageKey(name)),
+    setItem: (name: string, value: string) => localForageStorage.setItem(visionaryHostStorageKey(name), value),
+    removeItem: (name: string) => localForageStorage.removeItem(visionaryHostStorageKey(name)),
+};
 
 type PromptStore = {
     hydrated: boolean;
@@ -46,7 +54,8 @@ export const usePromptStore = create<PromptStore>()(
         }),
         {
             name: "infinite-canvas:prompt_store",
-            storage: createJSONStorage(() => localForageStorage),
+            storage: createJSONStorage(() => promptStorage),
+            skipHydration: VISIONARY_HOSTED,
             onRehydrateStorage: () => () => usePromptStore.setState({ hydrated: true }),
         },
     ),

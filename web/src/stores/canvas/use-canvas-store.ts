@@ -6,6 +6,8 @@ import { localForageStorage } from "@/lib/localforage-storage";
 import type { CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { getCanvasProjectCoverSource } from "@/lib/canvas/canvas-project-cover";
 import type { CanvasAssistantSession, CanvasConnection, CanvasNodeData, ViewportTransform } from "@/types/canvas";
+import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
+import { visionaryHostStorageKey } from "@/services/api/visionary-host/storage-namespace";
 
 export type CanvasProject = {
     id: string;
@@ -74,7 +76,7 @@ function removeProjectCovers(projectIds: string[]) {
 
 const canvasStorage: PersistStorage<CanvasStore> = {
     getItem: async (name) => {
-        const value = await localForageStorage.getItem(name);
+        const value = await localForageStorage.getItem(visionaryHostStorageKey(name));
         if (!value) return null;
         const parsed = JSON.parse(value) as StorageValue<CanvasStore>;
         queuedPersistState = parsed.state as PersistedCanvasState;
@@ -87,10 +89,10 @@ const canvasStorage: PersistStorage<CanvasStore> = {
         if (saveTimer) clearTimeout(saveTimer);
         saveTimer = setTimeout(() => {
             saveTimer = null;
-            void localForageStorage.setItem(name, JSON.stringify(value));
+            void localForageStorage.setItem(visionaryHostStorageKey(name), JSON.stringify(value));
         }, 400);
     },
-    removeItem: (name) => localForageStorage.removeItem(name),
+    removeItem: (name) => localForageStorage.removeItem(visionaryHostStorageKey(name)),
 };
 
 export const useCanvasStore = create<CanvasStore>()(
@@ -178,6 +180,7 @@ export const useCanvasStore = create<CanvasStore>()(
                 ({
                     projects: state.projects,
                 }) as StorageValue<CanvasStore>["state"],
+            skipHydration: VISIONARY_HOSTED,
             onRehydrateStorage: () => () => {
                 useCanvasStore.setState({ hydrated: true });
             },

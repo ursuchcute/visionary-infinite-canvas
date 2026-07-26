@@ -1,7 +1,10 @@
 import axios from "axios";
 
+import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
+import { requestVisionaryHostImage, requestVisionaryHostText } from "@/services/api/visionary-host/client";
+import type { VisionaryHostRequestContext } from "@/services/api/visionary-host/contracts";
 import { buildApiUrl, resolveModelRequestConfig, resolveModelScript, type AiConfig, type ModelChannel } from "@/stores/use-config-store";
-import { normalizePluginImages, runModelPlugin } from "./model-plugin";
+import { normalizePluginImages, runModelPlugin } from "@/services/api/model-plugin";
 import { nanoid } from "nanoid";
 import { dataUrlToFile } from "@/lib/image-utils";
 import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
@@ -91,7 +94,7 @@ type GeminiPayload = {
     promptFeedback?: { blockReason?: string };
 };
 type GeminiStreamState = { buffer: string; text: string; toolCalls: ResponseToolCall[]; error?: string };
-type RequestOptions = { signal?: AbortSignal };
+export type RequestOptions = { signal?: AbortSignal; hostContext?: VisionaryHostRequestContext };
 
 const QUALITY_BASE: Record<string, number> = {
     low: 1024,
@@ -660,6 +663,17 @@ function parseGeminiImagePayload(payload: GeminiPayload) {
 }
 
 export async function requestGeneration(config: AiConfig, prompt: string, options?: RequestOptions) {
+    if (VISIONARY_HOSTED) {
+        const context = requireHostContext(options);
+        const response = await requestVisionaryHostImage(
+            context,
+            prompt,
+            hostImageParameters(config),
+            [],
+            options,
+        );
+        return response.images.map((image) => ({ id: image.generationId, dataUrl: image.url, operationId: response.operationId, billing: response.billing }));
+    }
     const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
     const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
     const script = resolveModelScript(config, config.model || config.imageModel);
@@ -718,6 +732,18 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
 }
 
 export async function requestEdit(config: AiConfig, prompt: string, references: ReferenceImage[], mask?: ReferenceImage, options?: RequestOptions) {
+    if (VISIONARY_HOSTED) {
+        if (mask) throw new Error("Hosted 首发暂不支持蒙版编辑。");
+        const context = requireHostContext(options);
+        const response = await requestVisionaryHostImage(
+            context,
+            prompt,
+            hostImageParameters(config),
+            references,
+            options,
+        );
+        return response.images.map((image) => ({ id: image.generationId, dataUrl: image.url, operationId: response.operationId, billing: response.billing }));
+    }
     const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
     const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
     const requestPrompt = buildImageReferencePromptText(prompt, references);
@@ -782,6 +808,10 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
 }
 
 export async function requestImageQuestion(config: AiConfig, messages: AiTextMessage[], onDelta: (text: string) => void, options?: RequestOptions) {
+    if (VISIONARY_HOSTED) {
+        const content = hostedTextContent(messages);
+        return requestVisionaryHostText(requireHostContext(options), content, config.model || config.textModel, onDelta, options);
+    }
     const requestConfig = resolveModelRequestConfig(config, config.model || config.textModel);
     const script = resolveModelScript(config, config.model || config.textModel);
     if (script) {
@@ -853,3 +883,32 @@ const defaultGeminiConfig: Pick<AiConfig, "baseUrl" | "apiKey" | "apiFormat" | "
     model: "",
     systemPrompt: "",
 };
+
+function requireHostContext(options?: RequestOptions) {
+    if (!options?.hostContext?.clientOperationId || !options.hostContext.projectId || !options.hostContext.nodeId) {
+        throw new Error("画布生成上下文缺失，请刷新页面后重试。");
+    }
+    return options.hostContext;
+}
+
+function hostImageParameters(config: AiConfig) {
+    return {
+        model: config.model || config.imageModel,
+        ratio: config.imageAspectRatio || config.size,
+        imageSize: config.imageResolution,
+        quality: config.quality,
+        optimizeChineseText: false,
+    };
+}
+
+function hostedTextContent(messages: AiTextMessage[]) {
+    const parts = messages.flatMap((message) => {
+        if (typeof message.content === "string") return message.role === "system" ? [] : [message.content];
+        const hasImage = message.content.some((item) => item.type === "image_url");
+        if (hasImage) throw new Error("Hosted 首发的 AI 文本仅支持纯文本输入。");
+        return message.content.filter((item): item is { type: "text"; text: string } => item.type === "text").map((item) => item.text);
+    });
+    const content = parts.map((part) => part.trim()).filter(Boolean).join("\n\n");
+    if (!content) throw new Error("请输入文本生成要求。");
+    return content;
+}

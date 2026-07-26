@@ -4,7 +4,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Group, Video } from "lucide-react";
 import { saveAs } from "file-saver";
 
-import { requestEdit, requestGeneration, requestImageQuestion } from "@/services/api/image";
+import { requestEdit, requestGeneration, requestImageQuestion, type RequestOptions } from "@/services/api/image";
 import { requestAudioGeneration, storeGeneratedAudio } from "@/services/api/audio";
 import { requestVideoGeneration, storeGeneratedVideo } from "@/services/api/video";
 import { defaultConfig, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
@@ -92,6 +92,8 @@ import {
 } from "@/types/canvas";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio } from "@/types/media";
+import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
+import { createVisionaryOperationContext, recoverStoredVisionaryHostImages } from "@/services/api/visionary-host/client";
 
 // 内置节点注册到统一注册表(模块加载时执行一次)
 registerBuiltinNodes();
@@ -120,6 +122,15 @@ type CanvasGenerationRequest = {
     controller: AbortController;
 };
 
+type GeneratedCanvasImage = {
+    dataUrl: string;
+    operationId?: string;
+    id?: string;
+    billing?: {
+        chargedCredits?: number;
+    };
+};
+
 const VIDEO_NODE_MAX_WIDTH = 420;
 const VIDEO_NODE_MAX_HEIGHT = 420;
 // 稳定的空引用数组:避免每次渲染 `... || []` 产生新数组引用而击穿 CanvasNode 的 React.memo
@@ -136,6 +147,19 @@ const IMAGE_PROMPT_REVERSE_PRESET = `请根据参考图片反推一段适合用�
 1. 只输出提示词正文，不要解释。
 2. 覆盖主体、构图、风格、光线、色彩、材质、镜头和氛围。
 3. 尽量写成可直接用于生图模型的完整提示词。`;
+
+async function persistGeneratedCanvasImage(image: GeneratedCanvasImage) {
+    return uploadImage(image.dataUrl);
+}
+
+function hostedGenerationMetadata(image: GeneratedCanvasImage) {
+    if (!VISIONARY_HOSTED || !image.operationId) return {};
+    return {
+        hostOperationId: image.operationId,
+        hostGenerationId: image.id,
+        chargedCredits: image.billing?.chargedCredits,
+    };
+}
 
 export default function CanvasPage() {
     const [mounted, setMounted] = useState(false);
@@ -157,6 +181,13 @@ function InfiniteCanvasPage() {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const projectId = params.id || "";
+    const hostRequestOptions = useCallback(
+        (kind: "image" | "text", nodeId: string, signal: AbortSignal): RequestOptions => ({
+            signal,
+            ...(VISIONARY_HOSTED ? { hostContext: createVisionaryOperationContext(projectId, nodeId, kind) } : {}),
+        }),
+        [projectId],
+    );
     const openAgentPanel = useAgentStore((state) => state.openPanel);
     const containerRef = useRef<HTMLDivElement>(null);
     const imageInputRef = useRef<HTMLInputElement>(null);
@@ -254,6 +285,53 @@ function InfiniteCanvasPage() {
     const nodeById = graph.nodeById;
     const nodeByIdRef = useRef(nodeById);
     const hiddenBatchNodeIdsRef = useRef(graph.hiddenBatchNodeIds);
+
+    useEffect(() => {
+        if (!VISIONARY_HOSTED || !projectLoaded || !projectId) return;
+        const controller = new AbortController();
+        void recoverStoredVisionaryHostImages(
+            projectId,
+            async (record) => {
+                const existingNode = nodesRef.current.find((node) => node.id === record.nodeId);
+                if (!existingNode) return true;
+                if (record.status === "failed") {
+                    setNodes((prev) => prev.map((node) => (node.id === record.nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_ERROR, errorDetails: record.error || "图片生成失败。", hostOperationId: record.clientOperationId } } : node)));
+                    return true;
+                }
+                if (existingNode.metadata?.hostOperationId === record.clientOperationId && existingNode.metadata.content && existingNode.metadata.storageKey) return true;
+                if (!record.imageUrl) return false;
+                try {
+                    const image = await uploadImage(record.imageUrl);
+                    setNodes((prev) =>
+                        prev.map((node) =>
+                            node.id === record.nodeId
+                                ? {
+                                      ...node,
+                                      ...fitNodeSize(image.width, image.height, node.width, node.height),
+                                      metadata: {
+                                          ...node.metadata,
+                                          ...imageMetadata(image),
+                                          hostOperationId: record.clientOperationId,
+                                          hostGenerationId: record.generationId,
+                                          chargedCredits: record.billing?.chargedCredits,
+                                      },
+                                  }
+                                : node,
+                        ),
+                    );
+                    message.success("已恢复上次未完成的图片任务");
+                    return true;
+                } catch {
+                    return false;
+                }
+            },
+            controller.signal,
+        ).catch((error) => {
+            if (error instanceof DOMException && error.name === "AbortError") return;
+            message.error(error instanceof Error ? error.message : "恢复图片任务失败");
+        });
+        return () => controller.abort();
+    }, [message, projectId, projectLoaded]);
 
     useLayoutEffect(() => {
         if (!import.meta.env.DEV || typeof window === "undefined") return;
@@ -1796,10 +1874,16 @@ function InfiniteCanvasPage() {
             setDialogNodeId(childId);
             const controller = startGenerationRequest(childId, node.id, childId);
             try {
-                const image = await requestEdit(generationConfig, prompt, [source], { id: `${node.id}-mask`, name: "mask.png", type: "image/png", dataUrl: payload.maskDataUrl }, { signal: controller.signal }).then((items) => items[0]);
-                const uploaded = await uploadImage(image.dataUrl);
+                const image = await requestEdit(
+                    generationConfig,
+                    prompt,
+                    [source],
+                    { id: `${node.id}-mask`, name: "mask.png", type: "image/png", dataUrl: payload.maskDataUrl },
+                    hostRequestOptions("image", childId, controller.signal),
+                ).then((items) => items[0]);
+                const uploaded = await persistGeneratedCanvasImage(image);
                 const size = fitNodeSize(uploaded.width, uploaded.height, node.width, node.height);
-                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded), prompt, ...generationMetadata } } : item)));
+                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded), ...hostedGenerationMetadata(image), prompt, ...generationMetadata } } : item)));
             } catch (error) {
                 if (isGenerationCanceled(error)) return;
                 const errorDetails = error instanceof Error ? error.message : "局部修改失败";
@@ -1810,7 +1894,7 @@ function InfiniteCanvasPage() {
                 setRunningNodeId(null);
             }
         },
-        [effectiveConfig, finishGenerationRequest, isAiConfigReady, message, openConfigDialog, startGenerationRequest],
+        [effectiveConfig, finishGenerationRequest, hostRequestOptions, isAiConfigReady, message, openConfigDialog, startGenerationRequest],
     );
 
     const upscaleImageNode = useCallback(async (node: CanvasNodeData, params: CanvasImageUpscaleParams) => {
@@ -1877,11 +1961,11 @@ function InfiniteCanvasPage() {
                     prompt,
                     [{ id: node.id, name: `${node.title || node.id}.png`, type: node.metadata.mimeType || "image/png", dataUrl: node.metadata.content, storageKey: node.metadata.storageKey }],
                     undefined,
-                    { signal: controller.signal },
+                    hostRequestOptions("image", childId, controller.signal),
                 ).then((items) => items[0]);
-                const uploaded = await uploadImage(image.dataUrl);
+                const uploaded = await persistGeneratedCanvasImage(image);
                 const size = fitNodeSize(uploaded.width, uploaded.height, imageConfig.width, imageConfig.height);
-                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded), prompt, ...generationMetadata } } : item)));
+                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded), ...hostedGenerationMetadata(image), prompt, ...generationMetadata } } : item)));
             } catch (error) {
                 if (isGenerationCanceled(error)) return;
                 const errorDetails = error instanceof Error ? error.message : "生成失败";
@@ -1891,7 +1975,7 @@ function InfiniteCanvasPage() {
                 setRunningNodeId(null);
             }
         },
-        [effectiveConfig, finishGenerationRequest, openConfigDialog, startGenerationRequest],
+        [effectiveConfig, finishGenerationRequest, hostRequestOptions, openConfigDialog, startGenerationRequest],
     );
 
     const handleFontSizeChange = useCallback((nodeId: string, fontSize: number) => {
@@ -1907,6 +1991,11 @@ function InfiniteCanvasPage() {
         async (event: ReactChangeEvent<HTMLInputElement>) => {
             const file = event.target.files?.[0];
             const target = uploadTargetRef.current;
+            if (VISIONARY_HOSTED && file && !file.type.startsWith("image/")) {
+                message.warning("Hosted 画布当前只支持图片文件。");
+                event.target.value = "";
+                return;
+            }
             if (!file || (!file.type.startsWith("image/") && !file.type.startsWith("video/") && !isAudioFile(file))) return;
 
             if (target?.nodeId) {
@@ -2003,19 +2092,29 @@ function InfiniteCanvasPage() {
             uploadTargetRef.current = null;
             event.target.value = "";
         },
-        [createAudioFileNode, createImageFileNode, createVideoFileNode, screenToCanvas, size.height, size.width],
+        [createAudioFileNode, createImageFileNode, createVideoFileNode, message, screenToCanvas, size.height, size.width],
     );
 
     const handleDrop = useCallback(
         (event: ReactDragEvent<HTMLDivElement>) => {
             event.preventDefault();
+            if (VISIONARY_HOSTED) {
+                const image = Array.from(event.dataTransfer.files).find((item) => item.type.startsWith("image/"));
+                if (!image) {
+                    if (event.dataTransfer.files.length) message.warning("Hosted 画布当前只支持图片文件。");
+                    return;
+                }
+                const position = screenToCanvas(event.clientX, event.clientY);
+                void createImageFileNode(image, position);
+                return;
+            }
             const file = Array.from(event.dataTransfer.files).find((item) => item.type.startsWith("image/") || item.type.startsWith("video/") || isAudioFile(item));
             if (!file) return;
 
             const pos = screenToCanvas(event.clientX, event.clientY);
             void (isAudioFile(file) ? createAudioFileNode(file, pos) : file.type.startsWith("video/") ? createVideoFileNode(file, pos) : createImageFileNode(file, pos));
         },
-        [createAudioFileNode, createImageFileNode, createVideoFileNode, screenToCanvas],
+        [createAudioFileNode, createImageFileNode, createVideoFileNode, message, screenToCanvas],
     );
 
     const preventCanvasContextMenu = useCallback((event: ReactMouseEvent) => {
@@ -2055,11 +2154,15 @@ function InfiniteCanvasPage() {
                             : [],
                     );
                     const image = refs.length
-                        ? await requestEdit({ ...generationConfig, count: "1" }, fullPrompt, refs, undefined, { signal: controller.signal }).then((items) => items[0])
-                        : await requestGeneration({ ...generationConfig, count: "1" }, fullPrompt, { signal: controller.signal }).then((items) => items[0]);
-                    const uploaded = await uploadImage(image.dataUrl);
+                        ? await requestEdit({ ...generationConfig, count: "1" }, fullPrompt, refs, undefined, hostRequestOptions("image", nodeId, controller.signal)).then((items) => items[0])
+                        : await requestGeneration({ ...generationConfig, count: "1" }, fullPrompt, hostRequestOptions("image", nodeId, controller.signal)).then((items) => items[0]);
+                    const uploaded = await persistGeneratedCanvasImage(image);
                     setNodes((prev) =>
-                        prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, ...imageMetadata(uploaded), prompt: scene, model: generationConfig.model, status: NODE_STATUS_SUCCESS, errorDetails: undefined } } : node)),
+                        prev.map((node) =>
+                            node.id === nodeId
+                                ? { ...node, metadata: { ...node.metadata, ...imageMetadata(uploaded), ...hostedGenerationMetadata(image), prompt: scene, model: generationConfig.model, status: NODE_STATUS_SUCCESS, errorDetails: undefined } }
+                                : node,
+                        ),
                     );
                     setDialogNodeId(null);
                 } catch (error) {
@@ -2206,9 +2309,9 @@ function InfiniteCanvasPage() {
                         targetIds.map(async (targetId) => {
                             try {
                                 const image = referenceImages.length
-                                    ? await requestEdit({ ...generationConfig, count: "1" }, effectivePrompt, referenceImages, undefined, { signal: controller.signal }).then((items) => items[0])
-                                    : await requestGeneration({ ...generationConfig, count: "1" }, effectivePrompt, { signal: controller.signal }).then((items) => items[0]);
-                                const uploaded = await uploadImage(image.dataUrl);
+                                    ? await requestEdit({ ...generationConfig, count: "1" }, effectivePrompt, referenceImages, undefined, hostRequestOptions("image", targetId, controller.signal)).then((items) => items[0])
+                                    : await requestGeneration({ ...generationConfig, count: "1" }, effectivePrompt, hostRequestOptions("image", targetId, controller.signal)).then((items) => items[0]);
+                                const uploaded = await persistGeneratedCanvasImage(image);
                                 const imageSize = inheritSourceSize ? resultSize : fitNodeSize(uploaded.width, uploaded.height, imageConfig.width, imageConfig.height);
                                 setNodes((prev) => {
                                     const root = prev.find((node) => node.id === rootId);
@@ -2221,7 +2324,7 @@ function InfiniteCanvasPage() {
                                                 position: { x: center.x - imageSize.width / 2, y: center.y - imageSize.height / 2 },
                                                 width: imageSize.width,
                                                 height: imageSize.height,
-                                                metadata: { ...node.metadata, ...imageMetadata(uploaded), primaryImageId: targetId },
+                                                metadata: { ...node.metadata, ...imageMetadata(uploaded), ...hostedGenerationMetadata(image), primaryImageId: targetId },
                                             };
                                         if (node.id === targetId)
                                             return {
@@ -2229,7 +2332,7 @@ function InfiniteCanvasPage() {
                                                 position: { x: center.x - imageSize.width / 2, y: center.y - imageSize.height / 2 },
                                                 width: imageSize.width,
                                                 height: imageSize.height,
-                                                metadata: { ...node.metadata, ...imageMetadata(uploaded) },
+                                                metadata: { ...node.metadata, ...imageMetadata(uploaded), ...hostedGenerationMetadata(image) },
                                             };
                                         return node;
                                     });
@@ -2406,7 +2509,7 @@ function InfiniteCanvasPage() {
                                 if (isConfigNode) return;
                                 setNodes((prev) => prev.map((node) => (node.id === targetNodeId ? { ...node, type: CanvasNodeType.Text, metadata: { ...node.metadata, content: text, status: NODE_STATUS_LOADING } } : node)));
                             },
-                            { signal: controller.signal },
+                            hostRequestOptions("text", targetNodeId, controller.signal),
                         )
                             .then((answer) => ({ nodeId: targetNodeId, content: answer || localStreamed }))
                             .finally(() => finishGenerationRequest(targetNodeId, controller));
@@ -2437,7 +2540,7 @@ function InfiniteCanvasPage() {
                 setRunningNodeId(null);
             }
         },
-        [effectiveConfig, finishGenerationRequest, isAiConfigReady, message, openConfigDialog, startGenerationRequest],
+        [effectiveConfig, finishGenerationRequest, hostRequestOptions, isAiConfigReady, message, openConfigDialog, startGenerationRequest],
     );
     useEffect(() => {
         generateNodeRef.current = handleGenerateNode;
@@ -2499,7 +2602,7 @@ function InfiniteCanvasPage() {
                             streamed = text;
                             setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, type: CanvasNodeType.Text, metadata: { ...item.metadata, content: text, status: NODE_STATUS_LOADING } } : item)));
                         },
-                        { signal: controller.signal },
+                        hostRequestOptions("text", node.id, controller.signal),
                     );
                     setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, type: CanvasNodeType.Text, metadata: { ...item.metadata, content: answer || streamed, prompt, status: NODE_STATUS_SUCCESS } } : item)));
                     return;
@@ -2539,9 +2642,9 @@ function InfiniteCanvasPage() {
                 }
 
                 const image = useReferenceImages
-                    ? await requestEdit(generationConfig, prompt, retryImages, undefined, { signal: controller.signal }).then((items) => items[0])
-                    : await requestGeneration(generationConfig, prompt, { signal: controller.signal }).then((items) => items[0]);
-                const uploadedImage = await uploadImage(image.dataUrl);
+                    ? await requestEdit(generationConfig, prompt, retryImages, undefined, hostRequestOptions("image", node.id, controller.signal)).then((items) => items[0])
+                    : await requestGeneration(generationConfig, prompt, hostRequestOptions("image", node.id, controller.signal)).then((items) => items[0]);
+                const uploadedImage = await persistGeneratedCanvasImage(image);
                 const imageConfig = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
                 const imageSize = fitNodeSize(uploadedImage.width, uploadedImage.height, imageConfig.width, imageConfig.height);
                 const generationMetadata = savedImageMetadata?.generationType
@@ -2563,7 +2666,7 @@ function InfiniteCanvasPage() {
                                   type: CanvasNodeType.Image,
                                   width: imageSize.width,
                                   height: imageSize.height,
-                                  metadata: { ...item.metadata, ...imageMetadata(uploadedImage), prompt, ...generationMetadata },
+                                  metadata: { ...item.metadata, ...imageMetadata(uploadedImage), ...hostedGenerationMetadata(image), prompt, ...generationMetadata },
                               }
                             : item,
                     ),
@@ -2578,7 +2681,7 @@ function InfiniteCanvasPage() {
                 setRunningNodeId(null);
             }
         },
-        [effectiveConfig, finishGenerationRequest, isAiConfigReady, message, openConfigDialog, startGenerationRequest],
+        [effectiveConfig, finishGenerationRequest, hostRequestOptions, isAiConfigReady, message, openConfigDialog, startGenerationRequest],
     );
 
     const generateImageFromTextNode = useCallback(
@@ -2962,10 +3065,10 @@ function InfiniteCanvasPage() {
                     />
                 ) : null}
 
-                <input ref={imageInputRef} type="file" accept="image/*,video/*,audio/mpeg,audio/wav,audio/x-wav,.mp3,.wav" className="hidden" onChange={handleImageInputChange} />
+                <input ref={imageInputRef} type="file" accept={VISIONARY_HOSTED ? "image/*" : "image/*,video/*,audio/mpeg,audio/wav,audio/x-wav,.mp3,.wav"} className="hidden" onChange={handleImageInputChange} />
 
                 <CanvasNodeInfoModal node={infoNode} open={Boolean(infoNode)} onClose={() => setInfoNodeId(null)} />
-                <CanvasPluginManagerModal open={pluginManagerOpen} onClose={() => setPluginManagerOpen(false)} />
+                {!VISIONARY_HOSTED ? <CanvasPluginManagerModal open={pluginManagerOpen} onClose={() => setPluginManagerOpen(false)} /> : null}
 
                 {cropNode?.metadata?.content ? <CanvasNodeCropDialog dataUrl={cropNode.metadata.content} open={Boolean(cropNode)} onClose={() => setCropNodeId(null)} onConfirm={(crop) => void cropImageNode(cropNode!, crop)} /> : null}
 

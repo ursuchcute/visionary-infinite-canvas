@@ -7,6 +7,7 @@ import { ImageSettingsPanel, imageQualityLabel, imageSizeLabel } from "@/compone
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { AiConfig } from "@/stores/use-config-store";
+import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
 
 type CanvasImageSettingsPopoverProps = {
     config: AiConfig;
@@ -26,7 +27,7 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
     const [open, setOpen] = useState(false);
     const [buttonRect, setButtonRect] = useState<DOMRect | null>(null);
     const quality = config.quality || "auto";
-    const count = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
+    const count = VISIONARY_HOSTED ? 1 : Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
     const activeSize = config.size || "auto";
     const updateOpen = (nextOpen: boolean) => {
         setOpen(nextOpen);
@@ -117,7 +118,15 @@ function ImageSettingsPortal({
             onMouseDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
         >
-            <ImageSettingsPanel config={config} onConfigChange={(key, value) => onConfigChange(key, value)} theme={theme} className="space-y-4" />
+            <ImageSettingsPanel
+                config={VISIONARY_HOSTED ? { ...config, count: "1" } : config}
+                onConfigChange={(key, value) => {
+                    if (VISIONARY_HOSTED && key === "count") return;
+                    onConfigChange(key, value);
+                }}
+                theme={theme}
+                className="space-y-4"
+            />
         </div>,
         document.body,
     );

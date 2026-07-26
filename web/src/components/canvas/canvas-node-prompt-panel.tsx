@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowUp, Coins, LoaderCircle, Square } from "lucide-react";
 import { Button } from "antd";
+import { useParams } from "react-router-dom";
 
 import { ModelPicker } from "@/components/model-picker";
 import { defaultConfig, modelMatchesCapability, modelOptionName, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
@@ -8,11 +9,13 @@ import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasImageParameterControls } from "./canvas-image-parameter-controls";
 import { CanvasPromptLibrary } from "./canvas-prompt-library";
-import { CanvasAudioSettingsPopover, type CanvasAudioSettingKey } from "./canvas-audio-settings-popover";
+import { CanvasAudioSettingsPopover, type CanvasAudioSettingKey } from "@/components/canvas/canvas-audio-settings-popover";
 import { CanvasPromptChipInput } from "./canvas-prompt-chip-input";
-import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
+import { CanvasVideoSettingsPopover } from "@/components/canvas/canvas-video-settings-popover";
 import { CanvasNodeType, type CanvasGenerationMode, type CanvasNodeData } from "@/types/canvas";
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
+import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
+import { useVisionaryImageQuote } from "@/hooks/use-visionary-image-quote";
 
 export type CanvasNodeGenerationMode = CanvasGenerationMode;
 
@@ -34,9 +37,12 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const mode = modeOverride ?? defaultMode(node.type);
     const config = buildNodeConfig(globalConfig, node, mode);
+    const modelAvailable = Boolean(config.model);
     const hasTextContent = node.type === CanvasNodeType.Text && Boolean(node.metadata?.content?.trim());
     const hasImageContent = node.type === CanvasNodeType.Image && Boolean(node.metadata?.content);
     const [prompt, setPrompt] = useState(node.metadata?.prompt || "");
+    const projectId = useParams<{ id: string }>().id || "";
+    const quote = useVisionaryImageQuote(projectId, node.id, prompt, config, mode === "image" && modelAvailable);
 
     // 仅在切换节点时恢复该节点已保存的提示词，同一节点生成完成后继续保留当前输入。
     useEffect(() => {
@@ -52,7 +58,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
 
     const submit = () => {
         const text = prompt.trim();
-        if (!text || isRunning) return;
+        if (!text || isRunning || !modelAvailable) return;
         onGenerate(node.id, mode, text);
     };
 
@@ -88,7 +94,14 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                     />
                     <div className="flex shrink-0 items-center gap-2">
                         <span className="text-sm font-medium opacity-60">1×</span>
-                        <GenerationAction isRunning={isRunning} disabled={!prompt.trim()} theme={theme} onClick={() => (isRunning ? onStop(node.id) : submit())} />
+                        <GenerationAction
+                            isRunning={isRunning}
+                            disabled={!prompt.trim() || !modelAvailable}
+                            theme={theme}
+                            creditLabel={VISIONARY_HOSTED ? (modelAvailable ? "按量" : "维护中") : "--"}
+                            creditTitle={VISIONARY_HOSTED && !modelAvailable ? "文本生成维护中" : undefined}
+                            onClick={() => (isRunning ? onStop(node.id) : submit())}
+                        />
                     </div>
                 </div>
             </div>
@@ -144,7 +157,14 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                         <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="text" showIcon={false} onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" />
                     )}
                 </div>
-                <GenerationAction isRunning={isRunning} disabled={!prompt.trim()} theme={theme} onClick={() => (isRunning ? onStop(node.id) : submit())} />
+                <GenerationAction
+                    isRunning={isRunning}
+                    disabled={!prompt.trim() || !modelAvailable}
+                    theme={theme}
+                    creditLabel={VISIONARY_HOSTED ? (!modelAvailable ? "维护中" : quote.loading ? "…" : quote.credits == null ? "--" : String(quote.credits)) : "--"}
+                    creditTitle={VISIONARY_HOSTED ? (!modelAvailable ? "图片生成维护中" : quote.error || (quote.credits == null ? "正在估算所需积分" : `预计消耗 ${quote.credits} 积分，服务端结算为准`)) : "当前本地生成配置不计算积分"}
+                    onClick={() => (isRunning ? onStop(node.id) : submit())}
+                />
             </div>
         </div>
     );
@@ -156,7 +176,7 @@ function defaultMode(type: CanvasNodeData["type"]): CanvasNodeGenerationMode {
 
 function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: CanvasNodeGenerationMode): AiConfig {
     const defaultModel = mode === "image" ? globalConfig.imageModel : mode === "video" ? globalConfig.videoModel : mode === "audio" ? globalConfig.audioModel : globalConfig.textModel;
-    const fallbackModel = mode === "image" ? defaultConfig.imageModel : mode === "video" ? defaultConfig.videoModel : mode === "audio" ? defaultConfig.audioModel : defaultConfig.textModel;
+    const fallbackModel = VISIONARY_HOSTED ? "" : mode === "image" ? defaultConfig.imageModel : mode === "video" ? defaultConfig.videoModel : mode === "audio" ? defaultConfig.audioModel : defaultConfig.textModel;
     const currentModel = node.metadata?.model;
     const model = currentModel && modelMatchesCapability(globalConfig, currentModel, mode) ? currentModel : defaultModel && modelMatchesCapability(globalConfig, defaultModel, mode) ? defaultModel : fallbackModel;
     return {
@@ -175,7 +195,7 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
         audioFormat: node.metadata?.audioFormat || globalConfig.audioFormat || defaultConfig.audioFormat,
         audioSpeed: node.metadata?.audioSpeed || globalConfig.audioSpeed || defaultConfig.audioSpeed,
         audioInstructions: node.metadata?.audioInstructions || globalConfig.audioInstructions || defaultConfig.audioInstructions,
-        count: String(node.metadata?.count || (mode === "image" ? globalConfig.canvasImageCount || globalConfig.count : globalConfig.count) || defaultConfig.count),
+        count: VISIONARY_HOSTED ? "1" : String(node.metadata?.count || (mode === "image" ? globalConfig.canvasImageCount || globalConfig.count : globalConfig.count) || defaultConfig.count),
     };
 }
 
@@ -209,11 +229,25 @@ function PanelDivider({ color }: { color: string }) {
     return <span className="h-5 w-px shrink-0" style={{ background: color }} aria-hidden="true" />;
 }
 
-function GenerationAction({ isRunning, disabled, theme, onClick }: { isRunning: boolean; disabled: boolean; theme: (typeof canvasThemes)[keyof typeof canvasThemes]; onClick: () => void }) {
+function GenerationAction({
+    isRunning,
+    disabled,
+    theme,
+    creditLabel,
+    creditTitle,
+    onClick,
+}: {
+    isRunning: boolean;
+    disabled: boolean;
+    theme: (typeof canvasThemes)[keyof typeof canvasThemes];
+    creditLabel: string;
+    creditTitle?: string;
+    onClick: () => void;
+}) {
     return (
-        <div className="flex h-11 shrink-0 items-center gap-1 rounded-full p-1 pl-2.5" style={{ background: theme.node.fill }} title="当前本地生成配置不计算积分" aria-label="积分不可用">
+        <div className="flex h-11 shrink-0 items-center gap-1 rounded-full p-1 pl-2.5" style={{ background: theme.node.fill }} title={creditTitle} aria-label={creditTitle}>
             <Coins className="size-4 opacity-60" />
-            <span className="min-w-5 text-center text-xs font-medium opacity-65">--</span>
+            <span className="min-w-5 text-center text-xs font-medium opacity-65">{creditLabel}</span>
             <Button
                 className="!size-9 !min-w-9 shrink-0 !rounded-full !border-0 !p-0"
                 style={isRunning ? undefined : { background: theme.node.text, color: theme.node.panel }}

@@ -9,6 +9,7 @@ import type { CanvasExportFile } from "@/types/canvas-export";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useCanvasUiStore } from "@/stores/canvas/use-canvas-ui-store";
 import { APP_SHORT_NAME } from "@/constant/env";
+import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
 
 export default function CanvasPage() {
     const { message } = App.useApp();
@@ -91,9 +92,11 @@ export default function CanvasPage() {
                             </Button>
                         </>
                     ) : null}
-                    <Button className={secondaryButtonClass} disabled={!hydrated} icon={<FileUp className="size-4" />} onClick={() => inputRef.current?.click()}>
-                        导入画布
-                    </Button>
+                    {!VISIONARY_HOSTED ? (
+                        <Button className={secondaryButtonClass} disabled={!hydrated} icon={<FileUp className="size-4" />} onClick={() => inputRef.current?.click()}>
+                            导入画布
+                        </Button>
+                    ) : null}
                     <Button className={primaryButtonClass} disabled={!hydrated} icon={<Plus className="size-4" />} onClick={createAndEnter}>
                         新建画布
                     </Button>
@@ -126,7 +129,7 @@ export default function CanvasPage() {
                 )}
             </div>
 
-            <input ref={inputRef} type="file" accept="application/zip,.zip" className="hidden" onChange={(event) => void importCanvas(event.target.files?.[0])} />
+            {!VISIONARY_HOSTED ? <input ref={inputRef} type="file" accept="application/zip,.zip" className="hidden" onChange={(event) => void importCanvas(event.target.files?.[0])} /> : null}
             <LazyCanvasDeleteProjectsDialog />
         </main>
     );

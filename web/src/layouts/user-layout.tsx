@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import { LazyAgentPanel } from "@/components/agent/lazy-agent-panel";
 import { AppTopNav } from "@/components/layout/app-top-nav";
+import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
 
 export default function UserLayout({ children }: { children: ReactNode }) {
     return (
@@ -10,7 +11,7 @@ export default function UserLayout({ children }: { children: ReactNode }) {
                 <AppTopNav />
                 <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
             </div>
-            <LazyAgentPanel />
+            {!VISIONARY_HOSTED ? <LazyAgentPanel /> : null}
         </div>
     );
 }

@@ -6,6 +6,7 @@ import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { AiConfig } from "@/stores/use-config-store";
 import type { CanvasNodeMetadata } from "@/types/canvas";
+import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
 
 export type CanvasImageResolution = "standard" | "2k" | "4k";
 
@@ -131,18 +132,24 @@ export function CanvasImageParameterControls({ config, metadata, hideQuality = f
             {!hideQuality ? (
                 <ParameterTrigger buttonRef={qualityButtonRef} label="质量" value={imageQualityLabel(quality)} active={activePanel === "quality"} theme={theme} onClick={() => updatePanel(activePanel === "quality" ? null : "quality")} />
             ) : null}
-            <button
-                ref={countButtonRef}
-                type="button"
-                className="inline-flex h-10 shrink-0 cursor-pointer items-center rounded-lg px-2 text-sm font-medium transition hover:opacity-75"
-                style={{ color: theme.node.text, background: activePanel === "count" ? theme.node.fill : "transparent" }}
-                title={`生成数量：${count} 张`}
-                aria-label="设置图片生成数量"
-                aria-expanded={activePanel === "count"}
-                onClick={() => updatePanel(activePanel === "count" ? null : "count")}
-            >
-                {count}×
-            </button>
+            {VISIONARY_HOSTED ? (
+                <span className="inline-flex h-10 shrink-0 items-center px-2 text-sm font-medium opacity-60" title="Hosted 首发每次生成 1 张">
+                    1×
+                </span>
+            ) : (
+                <button
+                    ref={countButtonRef}
+                    type="button"
+                    className="inline-flex h-10 shrink-0 cursor-pointer items-center rounded-lg px-2 text-sm font-medium transition hover:opacity-75"
+                    style={{ color: theme.node.text, background: activePanel === "count" ? theme.node.fill : "transparent" }}
+                    title={`生成数量：${count} 张`}
+                    aria-label="设置图片生成数量"
+                    aria-expanded={activePanel === "count"}
+                    onClick={() => updatePanel(activePanel === "count" ? null : "count")}
+                >
+                    {count}×
+                </button>
+            )}
             {panel}
         </>
     );

@@ -6,14 +6,7 @@
         <meta name="description" content="Visionary Infinite Canvas，面向 AI 图片创作的开源无限画布工作台" />
         <link rel="icon" href="/logo.svg" />
         <title>Visionary Infinite Canvas</title>
-        <script>
-            try {
-                var s = JSON.parse(localStorage.getItem("infinite-canvas:theme_store") || "{}");
-                var t = s.state && s.state.theme === "light" ? "light" : "dark";
-                document.documentElement.classList.toggle("dark", t === "dark");
-                document.documentElement.style.colorScheme = t;
-            } catch (e) {}
-        </script>
+        <script src="/theme-init.js"></script>
     </head>
     <body class="bg-background text-foreground antialiased">
         <div id="root"></div>

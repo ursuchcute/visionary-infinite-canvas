@@ -6,6 +6,7 @@ import { ChevronsDown, ChevronsUp, CircleDot, Eraser, Group, Hand, Image as Imag
 import { canvasThemes, type CanvasBackgroundMode, type CanvasTheme } from "@/lib/canvas-theme";
 import { getNodePluginId, listNodeDefinitions, useNodeRegistryVersion } from "@/lib/canvas/node-registry";
 import { useThemeStore } from "@/stores/use-theme-store";
+import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
 
 const TOOLBAR_COLLAPSED_KEY = "canvas-toolbar-collapsed";
 
@@ -121,12 +122,16 @@ export function CanvasToolbar({
                         <ToolbarButton id="tool-image" label="图片" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddImage}>
                             <ImageIcon className="size-4.5" />
                         </ToolbarButton>
-                        <ToolbarButton id="tool-video" label="视频" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddVideo}>
-                            <Video className="size-4.5" />
-                        </ToolbarButton>
-                        <ToolbarButton id="tool-audio" label="音频" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddAudio}>
-                            <Music2 className="size-4.5" />
-                        </ToolbarButton>
+                        {!VISIONARY_HOSTED ? (
+                            <>
+                                <ToolbarButton id="tool-video" label="视频" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddVideo}>
+                                    <Video className="size-4.5" />
+                                </ToolbarButton>
+                                <ToolbarButton id="tool-audio" label="音频" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddAudio}>
+                                    <Music2 className="size-4.5" />
+                                </ToolbarButton>
+                            </>
+                        ) : null}
                         <ToolbarButton id="tool-config" label="生成配置" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddConfig}>
                             <Settings2 className="size-4.5" />
                         </ToolbarButton>

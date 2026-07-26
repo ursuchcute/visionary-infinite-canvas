@@ -2,6 +2,8 @@ import localforage from "localforage";
 
 import { nanoid } from "nanoid";
 import { readImageMeta } from "@/lib/image-utils";
+import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
+import { isCurrentVisionaryHostStorageKey, visionaryHostStorageKey } from "@/services/api/visionary-host/storage-namespace";
 
 export type UploadedImage = {
     url: string;
@@ -17,7 +19,7 @@ const objectUrls = new Map<string, string>();
 
 export async function uploadImage(input: string | Blob): Promise<UploadedImage> {
     const blob = typeof input === "string" ? await (await fetch(input)).blob() : input;
-    const storageKey = `image:${nanoid()}`;
+    const storageKey = visionaryHostStorageKey(`image:${nanoid()}`);
     await store.setItem(storageKey, blob);
     const url = URL.createObjectURL(blob);
     objectUrls.set(storageKey, url);
@@ -27,6 +29,7 @@ export async function uploadImage(input: string | Blob): Promise<UploadedImage> 
 
 export async function resolveImageUrl(storageKey?: string, fallback = "") {
     if (!storageKey) return fallback;
+    if (!isCurrentVisionaryHostStorageKey(storageKey, "image:")) return fallback;
     const cached = objectUrls.get(storageKey);
     if (cached) return cached;
     const blob = await store.getItem<Blob>(storageKey);
@@ -37,10 +40,14 @@ export async function resolveImageUrl(storageKey?: string, fallback = "") {
 }
 
 export async function getImageBlob(storageKey: string) {
+    if (!isCurrentVisionaryHostStorageKey(storageKey, "image:")) return null;
     return store.getItem<Blob>(storageKey);
 }
 
 export async function setImageBlob(storageKey: string, blob: Blob) {
+    if (VISIONARY_HOSTED && !isCurrentVisionaryHostStorageKey(storageKey, "image:")) {
+        throw new Error("图片不属于当前画布账号。");
+    }
     await store.setItem(storageKey, blob);
     const url = URL.createObjectURL(blob);
     objectUrls.set(storageKey, url);
@@ -55,12 +62,14 @@ export async function imageToDataUrl(image: { url?: string; dataUrl?: string; st
 
 export async function deleteStoredImages(keys: Iterable<string>) {
     await Promise.all(
-        Array.from(new Set(keys)).map(async (key) => {
-            const url = objectUrls.get(key);
-            if (url) URL.revokeObjectURL(url);
-            objectUrls.delete(key);
-            await store.removeItem(key);
-        }),
+        Array.from(new Set(keys))
+            .filter((key) => isCurrentVisionaryHostStorageKey(key, "image:"))
+            .map(async (key) => {
+                const url = objectUrls.get(key);
+                if (url) URL.revokeObjectURL(url);
+                objectUrls.delete(key);
+                await store.removeItem(key);
+            }),
     );
 }
 
@@ -68,6 +77,7 @@ export async function cleanupUnusedImages(usedData: unknown) {
     const usedKeys = collectImageStorageKeys(usedData);
     const unused: string[] = [];
     await store.iterate((_value, key) => {
+        if (!isCurrentVisionaryHostStorageKey(key, "image:")) return;
         if (!usedKeys.has(key)) unused.push(key);
     });
     await deleteStoredImages(unused);
@@ -75,7 +85,7 @@ export async function cleanupUnusedImages(usedData: unknown) {
 
 export function collectImageStorageKeys(value: unknown, keys = new Set<string>()) {
     if (!value || typeof value !== "object") return keys;
-    if ("storageKey" in value && typeof value.storageKey === "string" && value.storageKey.startsWith("image:")) keys.add(value.storageKey);
+    if ("storageKey" in value && typeof value.storageKey === "string" && isCurrentVisionaryHostStorageKey(value.storageKey, "image:")) keys.add(value.storageKey);
     Object.values(value).forEach((item) => (Array.isArray(item) ? item.forEach((child) => collectImageStorageKeys(child, keys)) : collectImageStorageKeys(item, keys)));
     return keys;
 }

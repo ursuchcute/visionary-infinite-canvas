@@ -5,10 +5,11 @@ import "./styles/globals.css";
 import { RouterProvider } from "react-router-dom";
 
 import { AppProviders } from "@/components/layout/app-providers";
+import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
 import { initAnalytics } from "@/lib/analytics";
 import { router } from "@/router";
 
-initAnalytics();
+if (!VISIONARY_HOSTED) initAnalytics();
 
 document.body.style.fontFamily = '"SF Pro Display","SF Pro Text","PingFang SC","Microsoft YaHei","Helvetica Neue",sans-serif';
 

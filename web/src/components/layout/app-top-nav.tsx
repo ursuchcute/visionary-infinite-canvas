@@ -7,8 +7,9 @@ import { UserStatusActions } from "@/components/layout/user-status-actions";
 import { navigationTools, type NavigationToolSlug } from "@/constant/navigation-tools";
 import { cn } from "@/lib/utils";
 import { useAgentStore } from "@/stores/use-agent-store";
+import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
 
-const visibleNavigationTools = navigationTools.filter((tool) => tool.slug !== "prompts");
+const visibleNavigationTools = navigationTools.filter((tool) => tool.slug !== "prompts" && (!VISIONARY_HOSTED || tool.slug === "canvas"));
 
 export function AppTopNav() {
     const { pathname } = useLocation();
@@ -23,7 +24,7 @@ export function AppTopNav() {
     const activeToolIndex = visibleNavigationTools.findIndex((tool) => tool.slug === activeToolSlug);
 
     useEffect(() => {
-        if (autoConnectRef.current || agentEnabled || agentConnected || !agentToken.trim()) return;
+        if (VISIONARY_HOSTED || autoConnectRef.current || agentEnabled || agentConnected || !agentToken.trim()) return;
         autoConnectRef.current = true;
         connectAgent({ silent: true });
     }, [agentConnected, agentEnabled, agentToken, connectAgent]);
@@ -74,7 +75,7 @@ export function AppTopNav() {
                                     );
                                 })}
                             </div>
-                            <UserStatusActions />
+                            <UserStatusActions showConfig={!VISIONARY_HOSTED} />
                         </div>
                     </div>
                 </header>

@@ -5,6 +5,7 @@ import { App, ConfigProvider } from "antd";
 import zhCN from "antd/locale/zh_CN";
 
 import { ClientRootInit } from "@/components/layout/client-root-init";
+import { VisionaryHostedGate } from "@/components/layout/visionary-hosted-gate";
 import { getAntThemeConfig } from "@/lib/app-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 
@@ -31,7 +32,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
         <ConfigProvider locale={zhCN} theme={getAntThemeConfig(dark)}>
             <App>
                 <QueryClientProvider client={queryClient}>
-                    <ClientRootInit>{children}</ClientRootInit>
+                    <VisionaryHostedGate>
+                        <ClientRootInit>{children}</ClientRootInit>
+                    </VisionaryHostedGate>
                 </QueryClientProvider>
             </App>
         </ConfigProvider>

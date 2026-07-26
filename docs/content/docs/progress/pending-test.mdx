@@ -5,6 +5,7 @@ description: 当前版本已实现但仍需人工验证的变更项
 
 # 待测试
 
+- Hosted 画布接入：使用超级管理员 `jsermjc@sina.com` 从 Visionary 主站打开画布，确认无需配置 API Key、Base URL 或模型渠道即可使用文本和图片生成；确认非 iframe、错误 nonce、错误来源、未登录、其他所有账号与功能未开放状态都会停在不可用页，且不能发起生成。等待超过 15 分钟后继续操作，确认票据会自动续期而不是强制退出；积分变化后确认主站余额会刷新。刷新或断网恢复时确认相同 `clientOperationId` 不会重复扣费，未完成图片可恢复到原节点。Hosted 页面只显示图片和文本入口，数量固定为 1，视频、音频、插件、Agent、WebDAV、API 配置与直连模型入口均不可用。画布详情顶栏展开或折叠时都应持续显示「源码 / AGPL-3.0」仓库链接、运行版本和积分，链接打开 `ursuchcute/visionary-infinite-canvas`。
 - 一键本地启动：macOS 双击仓库根目录的 `start-local.command`，应自动选择满足 Vite 要求的 Node.js，缺少依赖时自动安装，并在 `http://localhost:3002/canvas` 打开页面；端口已有服务时应直接复用，终端关闭后本次启动的开发服务器应同步退出。
 - Visionary 品牌与链接：检查网页标题、画布库、文档站和 Codex 插件说明显示 Visionary Infinite Canvas，公共顶栏左上角不显示 Logo 和品牌文字，仅显示主页图标，右侧不显示 GitHub 图标，项目文档中的源码、上游归属与 AGPL 声明仍可访问；打版本标签后确认 GitHub Pages 的 `/visionary-infinite-canvas/`、`/canvas` 路由、Logo、模型图标和本地插件地址正常，并确认 Docker 镜像目标属于当前 Fork。
 - 首页跳转：直接访问根路径 `/`，应立即替换为 `/canvas` 并显示「我的画布」页面，不再出现原首页展示内容；画布顶部的「主页」入口也应返回该页面。

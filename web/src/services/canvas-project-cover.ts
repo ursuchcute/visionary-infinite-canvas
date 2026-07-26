@@ -2,6 +2,7 @@ import localforage from "localforage";
 
 import type { CanvasProjectCoverSource } from "@/lib/canvas/canvas-project-cover";
 import { resolveImageUrl } from "@/services/image-storage";
+import { visionaryHostStorageKey } from "@/services/api/visionary-host/storage-namespace";
 
 const COVER_WIDTH = 640;
 const COVER_HEIGHT = 360;
@@ -27,7 +28,7 @@ export async function getCachedCanvasProjectCover(source: CanvasProjectCoverSour
     const memory = objectUrls.get(source.projectId);
     if (memory?.fingerprint === source.fingerprint) return memory.url;
 
-    const stored = await coverStore.getItem<StoredProjectCover>(source.projectId);
+    const stored = await coverStore.getItem<StoredProjectCover>(visionaryHostStorageKey(source.projectId));
     if (latestFingerprintByProject.get(source.projectId) !== source.fingerprint) return null;
     if (!stored || stored.fingerprint !== source.fingerprint || !(stored.blob instanceof Blob)) return null;
     return cacheObjectUrl(source, stored.blob);
@@ -56,7 +57,7 @@ export async function deleteCanvasProjectCovers(projectIds: Iterable<string>) {
             if (memory) URL.revokeObjectURL(memory.url);
             objectUrls.delete(projectId);
             latestFingerprintByProject.delete(projectId);
-            await coverStore.removeItem(projectId);
+            await coverStore.removeItem(visionaryHostStorageKey(projectId));
         }),
     );
 }
@@ -73,13 +74,14 @@ async function createCanvasProjectCover(source: CanvasProjectCoverSource) {
     const blob = await renderThumbnail(image);
     if (!blob) return null;
     if (latestFingerprintByProject.get(source.projectId) !== source.fingerprint) return null;
-    await coverStore.setItem<StoredProjectCover>(source.projectId, {
+    const storageKey = visionaryHostStorageKey(source.projectId);
+    await coverStore.setItem<StoredProjectCover>(storageKey, {
         fingerprint: source.fingerprint,
         blob,
     });
     if (latestFingerprintByProject.get(source.projectId) !== source.fingerprint) {
-        const stored = await coverStore.getItem<StoredProjectCover>(source.projectId);
-        if (stored?.fingerprint === source.fingerprint) await coverStore.removeItem(source.projectId);
+        const stored = await coverStore.getItem<StoredProjectCover>(storageKey);
+        if (stored?.fingerprint === source.fingerprint) await coverStore.removeItem(storageKey);
         return null;
     }
     return cacheObjectUrl(source, blob);

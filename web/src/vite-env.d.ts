@@ -1,5 +1,16 @@
 /// <reference types="vite/client" />
 
+interface ImportMetaEnv {
+    readonly VITE_VISIONARY_HOSTED?: string;
+    readonly VITE_VISIONARY_PARENT_ORIGIN?: string;
+    readonly VITE_VISIONARY_RELEASE_VERSION?: string;
+    readonly VITE_VISIONARY_SOURCE_REVISION?: string;
+}
+
+interface ImportMeta {
+    readonly env: ImportMetaEnv;
+}
+
 declare const __APP_VERSION__: string;
 declare const __APP_RELEASES__: import("@/lib/release").ReleaseInfo[];
 

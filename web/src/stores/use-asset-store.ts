@@ -5,6 +5,8 @@ import { nanoid } from "nanoid";
 import { localForageStorage } from "@/lib/localforage-storage";
 import { cleanupUnusedImages, resolveImageUrl, uploadImage } from "@/services/image-storage";
 import { cleanupUnusedMedia, resolveMediaUrl } from "@/services/file-storage";
+import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
+import { visionaryHostStorageKey } from "@/services/api/visionary-host/storage-namespace";
 
 export type AssetKind = "text" | "image" | "video";
 export type TextAsset = AssetBase<"text"> & { data: { content: string } };
@@ -39,7 +41,7 @@ const ASSET_STORE_KEY = "infinite-canvas:asset_store";
 
 const assetStorage: PersistStorage<AssetStore> = {
     getItem: async (name) => {
-        const value = await localForageStorage.getItem(name);
+        const value = await localForageStorage.getItem(visionaryHostStorageKey(name));
         if (!value) return null;
         const parsed = JSON.parse(value) as StorageValue<AssetStore>;
         parsed.state.assets = await Promise.all(
@@ -59,8 +61,8 @@ const assetStorage: PersistStorage<AssetStore> = {
         );
         return parsed;
     },
-    setItem: (name, value) => localForageStorage.setItem(name, JSON.stringify(value)),
-    removeItem: (name) => localForageStorage.removeItem(name),
+    setItem: (name, value) => localForageStorage.setItem(visionaryHostStorageKey(name), JSON.stringify(value)),
+    removeItem: (name) => localForageStorage.removeItem(visionaryHostStorageKey(name)),
 };
 
 export const useAssetStore = create<AssetStore>()(
@@ -97,6 +99,7 @@ export const useAssetStore = create<AssetStore>()(
             name: ASSET_STORE_KEY,
             storage: assetStorage,
             partialize: (state) => ({ assets: state.assets }) as StorageValue<AssetStore>["state"],
+            skipHydration: VISIONARY_HOSTED,
             onRehydrateStorage: () => () => {
                 useAssetStore.setState({ hydrated: true });
             },

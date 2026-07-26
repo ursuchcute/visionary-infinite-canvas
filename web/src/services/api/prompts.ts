@@ -4,6 +4,7 @@ import { runPromptSource, type RawPrompt } from "./prompt-source-runtime";
 import { usePromptSourceStore } from "@/stores/use-prompt-source-store";
 import { usePromptStore, type PersonalPrompt } from "@/stores/use-prompt-store";
 import type { PromptSource } from "./prompt-source-presets";
+import { visionaryHostStorageKey } from "./visionary-host/storage-namespace";
 
 export type Prompt = RawPrompt & {
     sourceId: string;
@@ -55,7 +56,7 @@ function enabledSources() {
 }
 
 function cacheKey(sourceId: string) {
-    return `prompt-source:${sourceId}`;
+    return visionaryHostStorageKey(`prompt-source:${sourceId}`);
 }
 
 function sourceSignature(source: PromptSource) {
@@ -149,7 +150,14 @@ async function getAllPrompts(includePersonal: boolean): Promise<Prompt[]> {
     return [...personal, ...settled.flat()];
 }
 
-export async function fetchPrompts({ keyword = "", tag = [], category = ALL_PROMPTS_OPTION, page = 1, pageSize = 20, includePersonal = true }: { keyword?: string; tag?: string[]; category?: string; page?: number; pageSize?: number; includePersonal?: boolean } = {}) {
+export async function fetchPrompts({
+    keyword = "",
+    tag = [],
+    category = ALL_PROMPTS_OPTION,
+    page = 1,
+    pageSize = 20,
+    includePersonal = true,
+}: { keyword?: string; tag?: string[]; category?: string; page?: number; pageSize?: number; includePersonal?: boolean } = {}) {
     const items = await getAllPrompts(includePersonal);
     const normalizedKeyword = keyword.trim().toLowerCase();
     const normalizedPage = Math.max(1, page);

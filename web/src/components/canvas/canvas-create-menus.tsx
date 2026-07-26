@@ -5,6 +5,7 @@ import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { listNodeDefinitions, useNodeRegistryVersion } from "@/lib/canvas/node-registry";
 import { CanvasNodeType, type ConnectionHandle, type Position } from "@/types/canvas";
+import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
 
 export type PendingConnectionCreate = {
     connection: ConnectionHandle;
@@ -40,8 +41,8 @@ export function ConnectionCreateMenu({
             <div className="grid gap-1">
                 <ConnectionCreateOption theme={theme} icon={<List className="size-5" />} title="文本生成" onClick={() => onCreate(CanvasNodeType.Text)} />
                 <ConnectionCreateOption theme={theme} icon={<ImageIcon className="size-5" />} title="图片生成" onClick={() => onCreate(CanvasNodeType.Image)} />
-                <ConnectionCreateOption theme={theme} icon={<Video className="size-5" />} title="视频生成" onClick={() => onCreate(CanvasNodeType.Video)} />
-                <ConnectionCreateOption theme={theme} icon={<Music2 className="size-5" />} title="音频参考" onClick={() => onCreate(CanvasNodeType.Audio)} />
+                {!VISIONARY_HOSTED ? <ConnectionCreateOption theme={theme} icon={<Video className="size-5" />} title="视频生成" onClick={() => onCreate(CanvasNodeType.Video)} /> : null}
+                {!VISIONARY_HOSTED ? <ConnectionCreateOption theme={theme} icon={<Music2 className="size-5" />} title="音频参考" onClick={() => onCreate(CanvasNodeType.Audio)} /> : null}
                 <ConnectionCreateOption theme={theme} icon={<Settings2 className="size-5" />} title="配置节点" onClick={() => onCreate(CanvasNodeType.Config)} />
             </div>
         </div>
@@ -77,7 +78,13 @@ export function NodeCreateMenu({ position, onCreate, onClose }: { position: Posi
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     useNodeRegistryVersion();
     const menuRef = useRef<HTMLDivElement>(null);
-    const definitions = listNodeDefinitions().filter((def) => def.showInCreateMenu !== false && def.type !== CanvasNodeType.Config && def.type !== CanvasNodeType.Group);
+    const definitions = listNodeDefinitions().filter(
+        (def) =>
+            def.showInCreateMenu !== false &&
+            def.type !== CanvasNodeType.Config &&
+            def.type !== CanvasNodeType.Group &&
+            (!VISIONARY_HOSTED || (def.type !== CanvasNodeType.Video && def.type !== CanvasNodeType.Audio)),
+    );
     // 点击菜单外的空白处自动关闭
     useEffect(() => {
         const handlePointerDown = (event: PointerEvent) => {

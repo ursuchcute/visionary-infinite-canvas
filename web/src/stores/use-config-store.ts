@@ -3,6 +3,8 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { nanoid } from "nanoid";
 
+import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
+
 export type ApiCallFormat = "openai" | "gemini";
 export type ModelCapability = "image" | "video" | "text" | "audio";
 
@@ -62,34 +64,36 @@ export type ConfigTabKey = "channels" | "preferences" | "prompt-sources" | "webd
 
 export const CONFIG_STORE_KEY = "infinite-canvas:ai_config_store";
 const CHANNEL_MODEL_SEPARATOR = "::";
-const OPENAI_BASE_URL = "https://api.openai.com";
-const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com";
+const OPENAI_BASE_URL = VISIONARY_HOSTED ? "" : "https://api.openai.com";
+const GEMINI_BASE_URL = VISIONARY_HOSTED ? "" : "https://generativelanguage.googleapis.com";
 
 export const defaultConfig: AiConfig = {
     channelMode: "local",
     baseUrl: OPENAI_BASE_URL,
     apiKey: "",
     apiFormat: "openai",
-    channels: [
-        {
-            id: "default",
-            name: "默认渠道",
-            baseUrl: OPENAI_BASE_URL,
-            apiKey: "",
-            apiFormat: "openai",
-            models: [
-                { name: "gpt-image-2", capability: "image" },
-                { name: "grok-imagine-video", capability: "video" },
-                { name: "gpt-5.5", capability: "text" },
-                { name: "gpt-4o-mini-tts", capability: "audio" },
-            ],
-        },
-    ],
-    model: "default::gpt-image-2",
-    imageModel: "default::gpt-image-2",
-    videoModel: "default::grok-imagine-video",
-    textModel: "default::gpt-5.5",
-    audioModel: "default::gpt-4o-mini-tts",
+    channels: VISIONARY_HOSTED
+        ? []
+        : [
+              {
+                  id: "default",
+                  name: "默认渠道",
+                  baseUrl: OPENAI_BASE_URL,
+                  apiKey: "",
+                  apiFormat: "openai",
+                  models: [
+                      { name: "gpt-image-2", capability: "image" },
+                      { name: "grok-imagine-video", capability: "video" },
+                      { name: "gpt-5.5", capability: "text" },
+                      { name: "gpt-4o-mini-tts", capability: "audio" },
+                  ],
+              },
+          ],
+    model: VISIONARY_HOSTED ? "" : "default::gpt-image-2",
+    imageModel: VISIONARY_HOSTED ? "" : "default::gpt-image-2",
+    videoModel: VISIONARY_HOSTED ? "" : "default::grok-imagine-video",
+    textModel: VISIONARY_HOSTED ? "" : "default::gpt-5.5",
+    audioModel: VISIONARY_HOSTED ? "" : "default::gpt-4o-mini-tts",
     audioVoice: "alloy",
     audioFormat: "mp3",
     audioSpeed: "1",
@@ -99,7 +103,7 @@ export const defaultConfig: AiConfig = {
     videoGenerateAudio: "true",
     videoWatermark: "false",
     systemPrompt: "",
-    models: ["default::gpt-image-2", "default::grok-imagine-video", "default::gpt-5.5", "default::gpt-4o-mini-tts"],
+    models: VISIONARY_HOSTED ? [] : ["default::gpt-image-2", "default::grok-imagine-video", "default::gpt-5.5", "default::gpt-4o-mini-tts"],
     quality: "auto",
     size: "1:1",
     background: "",
@@ -166,10 +170,12 @@ export function selectableModelsByCapability(config: AiConfig, capability?: Mode
 
 /** The user script (if any) attached to a model; empty string means use the system default call. */
 export function resolveModelScript(config: AiConfig, value: string) {
+    if (VISIONARY_HOSTED) return "";
     return findChannelModel(config, value)?.model.script?.trim() || "";
 }
 
 function isAiConfigReady(config: AiConfig, model: string) {
+    if (VISIONARY_HOSTED) return Boolean(model.trim());
     const channel = resolveModelChannel(config, model);
     return Boolean(model.trim() && channel.baseUrl.trim() && channel.apiKey.trim());
 }
@@ -203,8 +209,48 @@ export const useConfigStore = create<ConfigStore>()(
         }),
         {
             name: CONFIG_STORE_KEY,
-            partialize: (state) => ({ config: state.config, webdav: state.webdav }),
+            partialize: (state) =>
+                VISIONARY_HOSTED
+                    ? {
+                          config: {
+                              ...state.config,
+                              baseUrl: "",
+                              apiKey: "",
+                              videoModel: "",
+                              audioModel: "",
+                              channels: state.config.channels.map((channel) => ({
+                                  ...channel,
+                                  baseUrl: "",
+                                  apiKey: "",
+                                  models: channel.models.filter((model) => model.capability === "image" || model.capability === "text").map((model) => ({ ...model, script: undefined })),
+                              })),
+                              count: "1",
+                              canvasImageCount: "1",
+                          },
+                          webdav: defaultWebdavSyncConfig,
+                      }
+                    : { config: state.config, webdav: state.webdav },
             merge: (persisted, current) => {
+                if (VISIONARY_HOSTED) {
+                    return {
+                        ...current,
+                        config: {
+                            ...defaultConfig,
+                            baseUrl: "",
+                            apiKey: "",
+                            channels: [],
+                            models: [],
+                            model: "",
+                            imageModel: "",
+                            videoModel: "",
+                            textModel: "",
+                            audioModel: "",
+                            count: "1",
+                            canvasImageCount: "1",
+                        },
+                        webdav: defaultWebdavSyncConfig,
+                    };
+                }
                 const persistedState = (persisted || {}) as Partial<ConfigStore>;
                 const persistedConfig = (persistedState.config || {}) as Partial<AiConfig>;
                 const persistedWebdav = (persistedState.webdav || {}) as Partial<WebdavSyncConfig>;

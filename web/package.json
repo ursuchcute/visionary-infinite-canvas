@@ -6,6 +6,9 @@
     "scripts": {
         "dev": "vite --host 0.0.0.0 --port 3000",
         "build": "vite build",
+        "build:hosted": "VITE_VISIONARY_HOSTED=1 vite build",
+        "audit:hosted": "node scripts/audit-hosted-dist.mjs",
+        "deploy:hosted": "node scripts/deploy-hosted.mjs",
         "typecheck": "tsc --noEmit",
         "benchmark:canvas": "node scripts/canvas-benchmark.mjs",
         "start": "vite preview --host 0.0.0.0 --port 3000",
