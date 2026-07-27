@@ -3,7 +3,7 @@ import { create } from "zustand";
 export const CANVAS_SIDE_PANEL_MOTION_MS = 500;
 export const CANVAS_SIDE_PANEL_MIN_WIDTH = 220;
 export const CANVAS_SIDE_PANEL_MAX_WIDTH = 480;
-export const CANVAS_SIDE_PANEL_DEFAULT_WIDTH = 280;
+export const CANVAS_SIDE_PANEL_DEFAULT_WIDTH = 336;
 
 const WIDTH_KEY = "canvas-side-panel-width";
 const OPEN_KEY = "canvas-side-panel-open";

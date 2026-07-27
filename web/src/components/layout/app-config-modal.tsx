@@ -7,6 +7,7 @@ import { ConfigPromptSources } from "@/components/layout/config-prompt-sources";
 import { syncAppDataToWebdav, type AppSyncDomainKey, type AppSyncProgressEvent } from "@/services/app-sync";
 import { testWebdavConnection, WEBDAV_MANIFEST_FILE_NAME } from "@/services/webdav-sync";
 import { audioFormatOptions, audioVoiceOptions, normalizeAudioSpeedValue } from "@/lib/audio-generation";
+import { MAX_CANVAS_IMAGE_GENERATION_COUNT, normalizeCanvasImageGenerationCount } from "@/lib/canvas/canvas-generation-limits";
 import {
     createModelChannel,
     modelOptionsFromChannels,
@@ -225,7 +226,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                         <Input
                                             type="number"
                                             min={1}
-                                            max={15}
+                                            max={MAX_CANVAS_IMAGE_GENERATION_COUNT}
                                             value={config.canvasImageCount}
                                             onChange={(event) => updateConfig("canvasImageCount", event.target.value)}
                                             onBlur={(event) => updateConfig("canvasImageCount", normalizeImageCount(event.target.value))}
@@ -374,7 +375,7 @@ function pickDefaultModel(config: AiConfig, capability: ModelCapability, current
 }
 
 function normalizeImageCount(value: string) {
-    return String(Math.max(1, Math.min(15, Math.floor(Math.abs(Number(value)) || 3))));
+    return String(normalizeCanvasImageGenerationCount(value));
 }
 
 function apiFormatLabel(apiFormat: ApiCallFormat) {

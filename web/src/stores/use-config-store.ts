@@ -10,8 +10,11 @@ export type ModelCapability = "image" | "video" | "text" | "audio";
 
 export type ChannelModel = {
     name: string;
+    label?: string;
     capability: ModelCapability;
     script?: string;
+    ratios?: string[];
+    imageSizes?: string[];
 };
 
 export type ModelChannel = {
@@ -158,6 +161,14 @@ export function modelCapabilityOf(config: AiConfig, value: string): ModelCapabil
     return findChannelModel(config, value)?.model.capability;
 }
 
+export function modelOptionRatios(config: AiConfig, value: string) {
+    return findChannelModel(config, value)?.model.ratios;
+}
+
+export function modelOptionImageSizes(config: AiConfig, value: string) {
+    return findChannelModel(config, value)?.model.imageSizes;
+}
+
 export function modelMatchesCapability(config: AiConfig, value: string, capability?: ModelCapability) {
     if (!capability) return true;
     return modelCapabilityOf(config, value) === capability;
@@ -302,7 +313,10 @@ export function normalizeChannelModels(models: Array<string | ChannelModel> | un
         seen.add(name);
         const capability = typeof item === "string" ? guessCapability(name) : item.capability || guessCapability(name);
         const script = typeof item === "string" ? undefined : item.script?.trim() || undefined;
-        result.push({ name, capability, script });
+        const label = typeof item === "string" ? undefined : item.label?.trim() || undefined;
+        const ratios = typeof item === "string" ? undefined : Array.from(new Set((item.ratios || []).map((ratio) => ratio.trim()).filter(Boolean)));
+        const imageSizes = typeof item === "string" ? undefined : Array.from(new Set((item.imageSizes || []).map((size) => size.trim().toUpperCase()).filter(Boolean)));
+        result.push({ name, label, capability, script, ratios: ratios?.length ? ratios : undefined, imageSizes: imageSizes?.length ? imageSizes : undefined });
     }
     return result;
 }
@@ -341,7 +355,8 @@ export function modelOptionLabel(config: AiConfig, value: string) {
     const decoded = decodeChannelModel(value);
     if (!decoded) return value;
     const channel = config.channels.find((item) => item.id === decoded.channelId);
-    return channel ? `${decoded.model}（${channel.name}）` : decoded.model;
+    const label = channel?.models.find((model) => model.name === decoded.model)?.label || decoded.model;
+    return channel ? `${label}（${channel.name}）` : label;
 }
 
 export function modelOptionsFromChannels(channels: ModelChannel[]) {

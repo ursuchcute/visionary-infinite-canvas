@@ -4,10 +4,10 @@ import { Settings2 } from "lucide-react";
 import { Button } from "antd";
 
 import { ImageSettingsPanel, imageQualityLabel, imageSizeLabel } from "@/components/image-settings-panel";
+import { MAX_CANVAS_IMAGE_GENERATION_COUNT, normalizeCanvasImageGenerationCount } from "@/lib/canvas/canvas-generation-limits";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { AiConfig } from "@/stores/use-config-store";
-import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
 
 type CanvasImageSettingsPopoverProps = {
     config: AiConfig;
@@ -27,7 +27,7 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
     const [open, setOpen] = useState(false);
     const [buttonRect, setButtonRect] = useState<DOMRect | null>(null);
     const quality = config.quality || "auto";
-    const count = VISIONARY_HOSTED ? 1 : Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
+    const count = normalizeCanvasImageGenerationCount(config.count);
     const activeSize = config.size || "auto";
     const updateOpen = (nextOpen: boolean) => {
         setOpen(nextOpen);
@@ -119,13 +119,12 @@ function ImageSettingsPortal({
             onClick={(event) => event.stopPropagation()}
         >
             <ImageSettingsPanel
-                config={VISIONARY_HOSTED ? { ...config, count: "1" } : config}
-                onConfigChange={(key, value) => {
-                    if (VISIONARY_HOSTED && key === "count") return;
-                    onConfigChange(key, value);
-                }}
+                config={config}
+                onConfigChange={onConfigChange}
                 theme={theme}
                 className="space-y-4"
+                maxCount={MAX_CANVAS_IMAGE_GENERATION_COUNT}
+                quickCount={MAX_CANVAS_IMAGE_GENERATION_COUNT}
             />
         </div>,
         document.body,

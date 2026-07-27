@@ -3,13 +3,23 @@
     "version": "0.1.0",
     "private": true,
     "type": "module",
+    "packageManager": "npm@10.9.4",
+    "engines": {
+        "node": ">=22.12.0 <23",
+        "npm": ">=10.9.0 <11"
+    },
     "scripts": {
         "dev": "vite --host 0.0.0.0 --port 3000",
         "build": "vite build",
         "build:hosted": "VITE_VISIONARY_HOSTED=1 vite build",
         "audit:hosted": "node scripts/audit-hosted-dist.mjs",
+        "audit:hosted:dependencies": "node scripts/audit-hosted-dependencies.mjs",
         "deploy:hosted": "node scripts/deploy-hosted.mjs",
         "test:canvas-header-ui": "node scripts/test-canvas-header-ui.mjs",
+        "test:canvas-composer-controls": "node scripts/test-canvas-composer-controls.mjs",
+        "test:canvas-reference-connections": "node scripts/test-canvas-reference-connections.mjs",
+        "test:hosted-runtime-contract": "node scripts/test-hosted-runtime-contract.mjs",
+        "test:release": "npm run test:canvas-header-ui && npm run test:canvas-composer-controls && npm run test:canvas-reference-connections && npm run test:hosted-runtime-contract",
         "typecheck": "tsc --noEmit",
         "benchmark:canvas": "node scripts/canvas-benchmark.mjs",
         "start": "vite preview --host 0.0.0.0 --port 3000",
@@ -23,7 +33,7 @@
         "@tanstack/react-query": "^5.100.9",
         "@uiw/react-codemirror": "^4.25.9",
         "antd": "^6.4.2",
-        "axios": "^1.16.0",
+        "axios": "^1.18.1",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "copy-to-clipboard": "^4.0.2",
@@ -39,7 +49,6 @@
         "react-dom": "19.2.5",
         "react-router": "^7.12.0",
         "react-router-dom": "^7.12.0",
-        "shadcn": "^4.7.0",
         "streamdown": "^2.5.0",
         "tailwind-merge": "^3.6.0",
         "tailwindcss": "^4",
@@ -55,7 +64,16 @@
         "@vitejs/plugin-react": "^5.2.0",
         "playwright-core": "^1.61.1",
         "prettier": "^3.8.3",
+        "shadcn": "^4.7.0",
         "typescript": "^5",
         "vite": "^7.3.0"
+    },
+    "overrides": {
+        "brace-expansion": "5.0.8",
+        "fast-uri": "3.1.4",
+        "form-data": "4.0.6",
+        "hono": "4.12.32",
+        "js-yaml": "4.3.0",
+        "postcss": "8.5.23"
     }
 }

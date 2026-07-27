@@ -15,6 +15,7 @@ type VisionaryHostState = {
 };
 
 let initialization: Promise<void> | null = null;
+let hostedUserStorageHydrated = false;
 
 export const useVisionaryHostStore = create<VisionaryHostState>((set, get) => ({
     status: "idle",
@@ -26,9 +27,16 @@ export const useVisionaryHostStore = create<VisionaryHostState>((set, get) => ({
         initialization = startVisionaryHostSession({
             onBootstrap: async (bootstrap) => {
                 if (bootstrap.protocolVersion !== 1) throw new Error("画布服务协议版本不兼容，请刷新主站后重试。");
-                const shouldHydrate = setVisionaryHostStorageNamespace(bootstrap.storageNamespace);
-                applyBootstrapConfig(bootstrap);
-                if (shouldHydrate) await hydrateHostedUserStorage();
+                setVisionaryHostStorageNamespace(bootstrap.storageNamespace);
+                if (!hostedUserStorageHydrated) {
+                    // A refreshed launch ticket must not silently reset the
+                    // model, ratio, resolution, quality, or count the user is
+                    // currently composing with. A failed initial hydration may
+                    // retry, but successful documents apply defaults only once.
+                    applyBootstrapConfig(bootstrap);
+                    await hydrateHostedUserStorage();
+                    hostedUserStorageHydrated = true;
+                }
                 set({ status: "ready", bootstrap, error: "" });
             },
             onCredits: (credits) => get().updateCredits(credits),
@@ -64,7 +72,14 @@ export const useVisionaryHostStore = create<VisionaryHostState>((set, get) => ({
 function applyBootstrapConfig(bootstrap: VisionaryHostBootstrap) {
     const imageModels = bootstrap.features.image ? bootstrap.image.models : [];
     const textModels = bootstrap.features.text ? bootstrap.text.models : [];
-    const models: ChannelModel[] = [...imageModels.map((model) => ({ name: model.id, capability: "image" as const })), ...textModels.map((model) => ({ name: model.key, capability: "text" as const }))];
+    const models: ChannelModel[] = [
+        ...imageModels.map((model) => ({ name: model.id, label: model.label, capability: "image" as const, ratios: model.ratios, imageSizes: model.imageSizes })),
+        ...textModels.map((model) => ({
+            name: model.key,
+            label: hostedTextModelLabel(model),
+            capability: "text" as const,
+        })),
+    ];
     const channel = {
         id: "visionary-host",
         name: "Visionary",
@@ -101,6 +116,16 @@ function applyBootstrapConfig(bootstrap: VisionaryHostBootstrap) {
     }));
 }
 
+function hostedTextModelLabel(model: VisionaryHostBootstrap["text"]["models"][number]) {
+    const label = model.label?.trim();
+    // `chat-pro` is the main site's stable internal routing key for the
+    // GPT-5.5 route. Older databases can still carry the key itself as the
+    // display label, so correct only that stale presentation while preserving
+    // any explicit administrator label and the backend routing value.
+    if (model.key === "chat-pro" && (!label || label.toLowerCase() === "chat-pro")) return "gpt-5.5";
+    return label || model.key;
+}
+
 function normalizeBootstrapImageSize(value?: string) {
     const normalized = (value || "1K").trim().toUpperCase();
     if (normalized === "2K") return "2k" as const;
@@ -110,5 +135,11 @@ function normalizeBootstrapImageSize(value?: string) {
 
 async function hydrateHostedUserStorage() {
     const [{ useCanvasStore }, { useAssetStore }, { usePromptStore }] = await Promise.all([import("@/stores/canvas/use-canvas-store"), import("@/stores/use-asset-store"), import("@/stores/use-prompt-store")]);
-    await Promise.all([useCanvasStore.persist.rehydrate(), useAssetStore.persist.rehydrate(), usePromptStore.persist.rehydrate()]);
+    // Bootstrap is read-only and runs before the route owns the Canvas writer
+    // lease. Wait for every store to finish even when one fails, so no sibling
+    // rehydrate continues mutating in-memory state after initialization reports
+    // failure.
+    const results = await Promise.allSettled([useCanvasStore.persist.rehydrate(), useAssetStore.persist.rehydrate(), usePromptStore.persist.rehydrate()]);
+    const rejected = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+    if (rejected) throw rejected.reason;
 }

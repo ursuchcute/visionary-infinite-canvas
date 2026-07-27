@@ -38,9 +38,48 @@ type CanvasStore = {
 const initialViewport: ViewportTransform = { x: 0, y: 0, k: 1 };
 const CANVAS_STORE_KEY = "infinite-canvas:canvas_store";
 type PersistedCanvasState = Pick<CanvasStore, "projects">;
+type QueuedCanvasPersist = {
+    name: string;
+    value: StorageValue<CanvasStore>;
+};
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let queuedPersistState: PersistedCanvasState | null = null;
+let queuedPersistWrite: QueuedCanvasPersist | null = null;
+let activePersistWrite: Promise<void> | null = null;
 const projectCoverFingerprints = new Map<string, string | null>();
+
+function startCanvasPersistWrite() {
+    if (activePersistWrite) return activePersistWrite;
+    const queued = queuedPersistWrite;
+    if (!queued) return Promise.resolve();
+    queuedPersistWrite = null;
+    activePersistWrite = (async () => {
+        try {
+            await localForageStorage.setItem(visionaryHostStorageKey(queued.name), JSON.stringify(queued.value));
+        } catch (error) {
+            // Keep the newest unsaved snapshot available for the recovery loop.
+            // A terminal Hosted operation must not be acknowledged until this
+            // exact canvas snapshot is durably stored.
+            if (!queuedPersistWrite) queuedPersistWrite = queued;
+            throw error;
+        } finally {
+            activePersistWrite = null;
+        }
+    })();
+    return activePersistWrite;
+}
+
+export async function flushCanvasStorePersistence() {
+    while (true) {
+        if (saveTimer) {
+            clearTimeout(saveTimer);
+            saveTimer = null;
+        }
+        const write = activePersistWrite || (queuedPersistWrite ? startCanvasPersistWrite() : null);
+        if (!write) return;
+        await write;
+    }
+}
 
 function refreshProjectCover(project: CanvasProject) {
     const source = getCanvasProjectCoverSource(project);
@@ -86,10 +125,15 @@ const canvasStorage: PersistStorage<CanvasStore> = {
         const nextState = value.state as PersistedCanvasState;
         if (queuedPersistState && queuedPersistState.projects === nextState.projects) return;
         queuedPersistState = nextState;
+        queuedPersistWrite = { name, value };
         if (saveTimer) clearTimeout(saveTimer);
         saveTimer = setTimeout(() => {
             saveTimer = null;
-            void localForageStorage.setItem(visionaryHostStorageKey(name), JSON.stringify(value));
+            void startCanvasPersistWrite().catch(() => {
+                // Recovery awaits flushCanvasStorePersistence and retains the
+                // operation when durable storage is unavailable. Routine state
+                // persistence remains best-effort, matching the prior behavior.
+            });
         }, 400);
     },
     removeItem: (name) => localForageStorage.removeItem(visionaryHostStorageKey(name)),
@@ -187,3 +231,28 @@ export const useCanvasStore = create<CanvasStore>()(
         },
     ),
 );
+
+export async function reloadCanvasStoreFromPersistence() {
+    // A tab that has just acquired the global Hosted writer lease must treat
+    // IndexedDB as authoritative. Never flush a queued snapshot captured
+    // before the lease was acquired, because it may predate another tab's
+    // completed edits.
+    if (activePersistWrite) {
+        try {
+            await activePersistWrite;
+        } catch {
+            // The authoritative reload below replaces a failed local write.
+        }
+    }
+    discardCanvasStorePersistenceQueue();
+    await useCanvasStore.persist.rehydrate();
+}
+
+export function discardCanvasStorePersistenceQueue() {
+    if (saveTimer) {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+    }
+    queuedPersistWrite = null;
+    queuedPersistState = null;
+}

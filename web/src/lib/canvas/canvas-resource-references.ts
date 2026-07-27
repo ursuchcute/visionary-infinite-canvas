@@ -23,6 +23,20 @@ export function buildNodeMentionReferences(node: CanvasNodeData, nodes: CanvasNo
     return labelResourceNodes(getMentionResourceNodes(node.id, nodes, connections, index), true);
 }
 
+export function withConnectedNodeAutoMention(node: CanvasNodeData, sourceNodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
+    const reference = buildNodeMentionReferences(node, nodes, connections).find((item) => item.nodeId === sourceNodeId);
+    const acceptsTextReference = [CanvasNodeType.Image, CanvasNodeType.Text, CanvasNodeType.Config, CanvasNodeType.Video, CanvasNodeType.Audio].includes(node.type as CanvasNodeType);
+    // 图片连接本身就是结构化引用，提示面板用缩略图展示，不再把「图片1」写进用户提示词。
+    if (!reference || reference.kind !== "text" || !acceptsTextReference) return node;
+
+    const field = node.type === CanvasNodeType.Config ? "composerContent" : "prompt";
+    const mention = node.type === CanvasNodeType.Config ? `@[node:${reference.nodeId}]` : reference.label;
+    const current = node.metadata?.[field] || "";
+    if (current.includes(mention)) return node;
+    const next = `${current}${current && !/\s$/.test(current) ? " " : ""}${mention} `;
+    return { ...node, metadata: { ...node.metadata, [field]: next } };
+}
+
 export function getMentionResourceNodes(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[], index?: CanvasResourceIndex) {
     const configInputs = getConnectedConfigResourceNodes(nodeId, nodes, connections, index);
     if (configInputs.length) return configInputs;

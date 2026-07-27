@@ -16,15 +16,53 @@ export type UploadedImage = {
 
 const store = localforage.createInstance({ name: "infinite-canvas", storeName: "image_files" });
 const objectUrls = new Map<string, string>();
+const IMAGE_GC_GRACE_MS = 5 * 60_000;
+
+type StoredImageValue =
+    | Blob
+    | {
+          blob: Blob;
+          createdAt: number;
+      };
+
+function storedImageBlob(value: StoredImageValue | null) {
+    return value instanceof Blob ? value : value?.blob || null;
+}
+
+function storedImageCreatedAt(value: StoredImageValue | null) {
+    return value instanceof Blob ? 0 : value?.createdAt || 0;
+}
 
 export async function uploadImage(input: string | Blob): Promise<UploadedImage> {
-    const blob = typeof input === "string" ? await (await fetch(input)).blob() : input;
+    const blob = typeof input === "string" ? await imageInputToBlob(input) : input;
     const storageKey = visionaryHostStorageKey(`image:${nanoid()}`);
-    await store.setItem(storageKey, blob);
+    await store.setItem(storageKey, { blob, createdAt: Date.now() } satisfies StoredImageValue);
     const url = URL.createObjectURL(blob);
     objectUrls.set(storageKey, url);
-    const meta = await readImageMeta(url);
-    return { url, storageKey, width: meta.width, height: meta.height, bytes: blob.size, mimeType: blob.type || meta.mimeType };
+    try {
+        const meta = await readImageMeta(url);
+        return { url, storageKey, width: meta.width, height: meta.height, bytes: blob.size, mimeType: blob.type || meta.mimeType };
+    } catch (error) {
+        objectUrls.delete(storageKey);
+        URL.revokeObjectURL(url);
+        await store.removeItem(storageKey).catch(() => undefined);
+        throw error;
+    }
+}
+
+async function imageInputToBlob(input: string) {
+    if (!input.startsWith("data:")) return (await fetch(input)).blob();
+    const separator = input.indexOf(",");
+    if (separator < 0) throw new Error("图片数据格式无效");
+    const header = input.slice(0, separator);
+    const body = input.slice(separator + 1);
+    const mimeType = header.match(/^data:([^;,]+)/i)?.[1] || "application/octet-stream";
+    if (/;base64/i.test(header)) {
+        const binary = atob(body);
+        const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+        return new Blob([bytes], { type: mimeType });
+    }
+    return new Blob([decodeURIComponent(body)], { type: mimeType });
 }
 
 export async function resolveImageUrl(storageKey?: string, fallback = "") {
@@ -32,7 +70,7 @@ export async function resolveImageUrl(storageKey?: string, fallback = "") {
     if (!isCurrentVisionaryHostStorageKey(storageKey, "image:")) return fallback;
     const cached = objectUrls.get(storageKey);
     if (cached) return cached;
-    const blob = await store.getItem<Blob>(storageKey);
+    const blob = storedImageBlob(await store.getItem<StoredImageValue>(storageKey));
     if (!blob) return fallback;
     const url = URL.createObjectURL(blob);
     objectUrls.set(storageKey, url);
@@ -41,14 +79,16 @@ export async function resolveImageUrl(storageKey?: string, fallback = "") {
 
 export async function getImageBlob(storageKey: string) {
     if (!isCurrentVisionaryHostStorageKey(storageKey, "image:")) return null;
-    return store.getItem<Blob>(storageKey);
+    return storedImageBlob(await store.getItem<StoredImageValue>(storageKey));
 }
 
 export async function setImageBlob(storageKey: string, blob: Blob) {
     if (VISIONARY_HOSTED && !isCurrentVisionaryHostStorageKey(storageKey, "image:")) {
         throw new Error("图片不属于当前画布账号。");
     }
-    await store.setItem(storageKey, blob);
+    await store.setItem(storageKey, { blob, createdAt: Date.now() } satisfies StoredImageValue);
+    const previousUrl = objectUrls.get(storageKey);
+    if (previousUrl) URL.revokeObjectURL(previousUrl);
     const url = URL.createObjectURL(blob);
     objectUrls.set(storageKey, url);
     return url;
@@ -76,9 +116,10 @@ export async function deleteStoredImages(keys: Iterable<string>) {
 export async function cleanupUnusedImages(usedData: unknown) {
     const usedKeys = collectImageStorageKeys(usedData);
     const unused: string[] = [];
-    await store.iterate((_value, key) => {
+    const now = Date.now();
+    await store.iterate<StoredImageValue, void>((value, key) => {
         if (!isCurrentVisionaryHostStorageKey(key, "image:")) return;
-        if (!usedKeys.has(key)) unused.push(key);
+        if (!usedKeys.has(key) && now - storedImageCreatedAt(value) >= IMAGE_GC_GRACE_MS) unused.push(key);
     });
     await deleteStoredImages(unused);
 }

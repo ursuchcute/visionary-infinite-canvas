@@ -4,7 +4,10 @@ import { create } from "zustand";
 export type ModelCapability = "image" | "video" | "text" | "audio";
 export type ChannelModel = {
     name: string;
+    label?: string;
     capability: ModelCapability;
+    ratios?: string[];
+    imageSizes?: string[];
 };
 export type ModelChannel = {
     id: string;
@@ -102,8 +105,25 @@ export function modelOptionName(value: string) {
     return decodeChannelModel(value)?.model || value;
 }
 
-export function modelOptionLabel(_config: AiConfig, value: string) {
-    return modelOptionName(value);
+export function modelOptionLabel(config: AiConfig, value: string) {
+    const decoded = decodeChannelModel(value);
+    if (!decoded) return value;
+    const model = config.channels.find((channel) => channel.id === decoded.channelId)?.models.find((item) => item.name === decoded.model);
+    return model?.label || decoded.model;
+}
+
+export function modelOptionRatios(config: AiConfig, value: string) {
+    const decoded = decodeChannelModel(value);
+    const modelName = decoded?.model || value;
+    const channel = decoded ? config.channels.find((item) => item.id === decoded.channelId) : config.channels.find((item) => item.models.some((model) => model.name === modelName));
+    return channel?.models.find((model) => model.name === modelName)?.ratios;
+}
+
+export function modelOptionImageSizes(config: AiConfig, value: string) {
+    const decoded = decodeChannelModel(value);
+    const modelName = decoded?.model || value;
+    const channel = decoded ? config.channels.find((item) => item.id === decoded.channelId) : config.channels.find((item) => item.models.some((model) => model.name === modelName));
+    return channel?.models.find((model) => model.name === modelName)?.imageSizes;
 }
 
 export function selectableModelsByCapability(config: AiConfig, capability?: ModelCapability) {

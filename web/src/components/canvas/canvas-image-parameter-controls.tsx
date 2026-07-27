@@ -2,11 +2,11 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 import { imageQualityLabel } from "@/components/image-settings-panel";
+import { MAX_CANVAS_IMAGE_GENERATION_COUNT, normalizeCanvasImageGenerationCount } from "@/lib/canvas/canvas-generation-limits";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
-import type { AiConfig } from "@/stores/use-config-store";
+import { modelOptionImageSizes, modelOptionName, modelOptionRatios, type AiConfig } from "@/stores/use-config-store";
 import type { CanvasNodeMetadata } from "@/types/canvas";
-import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
 
 export type CanvasImageResolution = "standard" | "2k" | "4k";
 
@@ -45,9 +45,18 @@ export function CanvasImageParameterControls({ config, metadata, hideQuality = f
     const panelRef = useRef<HTMLDivElement>(null);
     const [activePanel, setActivePanel] = useState<ImageParameterPanel | null>(null);
     const [buttonRect, setButtonRect] = useState<DOMRect | null>(null);
-    const { resolution, ratio } = resolveCanvasImageParameters(metadata);
+    const forceStandardResolution = shouldUseStandardCanvasImageResolution(config.model);
+    const ratioOptions = resolveCanvasImageAspectRatios(config, config.model);
+    const { resolution: resolvedResolution, ratio } = resolveCanvasImageParameters(metadata, ratioOptions);
+    const resolution = forceStandardResolution ? "standard" : resolvedResolution;
     const quality = metadata?.quality || "auto";
     const count = normalizeCount(metadata?.count ?? config.count);
+
+    useEffect(() => {
+        const explicitRatio = metadata?.imageAspectRatio;
+        if (!explicitRatio || ratioOptions.includes(explicitRatio)) return;
+        onConfigPatch({ imageAspectRatio: ratio, size: resolveCanvasImageSize(resolution, ratio) });
+    }, [metadata?.imageAspectRatio, onConfigPatch, ratio, ratioOptions, resolution]);
 
     const updatePanel = (panel: ImageParameterPanel | null) => {
         setActivePanel(panel);
@@ -62,9 +71,9 @@ export function CanvasImageParameterControls({ config, metadata, hideQuality = f
     };
 
     useEffect(() => {
-        if (hideQuality && activePanel === "quality") updatePanel(null);
+        if ((hideQuality && activePanel === "quality") || (forceStandardResolution && activePanel === "resolution")) updatePanel(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [hideQuality]);
+    }, [forceStandardResolution, hideQuality]);
 
     useEffect(() => {
         if (!activePanel) return;
@@ -108,6 +117,7 @@ export function CanvasImageParameterControls({ config, metadata, hideQuality = f
                       theme={theme}
                       resolution={resolution}
                       ratio={ratio}
+                      ratioOptions={ratioOptions}
                       quality={quality}
                       count={count}
                       onResolutionSelect={selectResolution}
@@ -127,29 +137,27 @@ export function CanvasImageParameterControls({ config, metadata, hideQuality = f
 
     return (
         <>
-            <ParameterTrigger buttonRef={resolutionButtonRef} label="清晰度" value={resolutionLabel(resolution)} active={activePanel === "resolution"} theme={theme} onClick={() => updatePanel(activePanel === "resolution" ? null : "resolution")} />
+            {forceStandardResolution ? (
+                <ParameterTrigger buttonRef={resolutionButtonRef} label="清晰度" value="标准" active={false} theme={theme} readonly />
+            ) : (
+                <ParameterTrigger buttonRef={resolutionButtonRef} label="清晰度" value={resolutionLabel(resolution)} active={activePanel === "resolution"} theme={theme} onClick={() => updatePanel(activePanel === "resolution" ? null : "resolution")} />
+            )}
             <ParameterTrigger buttonRef={ratioButtonRef} label="比例" value={ratioLabel(ratio)} active={activePanel === "ratio"} theme={theme} onClick={() => updatePanel(activePanel === "ratio" ? null : "ratio")} />
             {!hideQuality ? (
                 <ParameterTrigger buttonRef={qualityButtonRef} label="质量" value={imageQualityLabel(quality)} active={activePanel === "quality"} theme={theme} onClick={() => updatePanel(activePanel === "quality" ? null : "quality")} />
             ) : null}
-            {VISIONARY_HOSTED ? (
-                <span className="inline-flex h-10 shrink-0 items-center px-2 text-sm font-medium opacity-60" title="Hosted 首发每次生成 1 张">
-                    1×
-                </span>
-            ) : (
-                <button
-                    ref={countButtonRef}
-                    type="button"
-                    className="inline-flex h-10 shrink-0 cursor-pointer items-center rounded-lg px-2 text-sm font-medium transition hover:opacity-75"
-                    style={{ color: theme.node.text, background: activePanel === "count" ? theme.node.fill : "transparent" }}
-                    title={`生成数量：${count} 张`}
-                    aria-label="设置图片生成数量"
-                    aria-expanded={activePanel === "count"}
-                    onClick={() => updatePanel(activePanel === "count" ? null : "count")}
-                >
-                    {count}×
-                </button>
-            )}
+            <button
+                ref={countButtonRef}
+                type="button"
+                className="inline-flex h-10 shrink-0 cursor-pointer items-center rounded-lg px-2 text-sm font-medium transition hover:opacity-75"
+                style={{ color: theme.node.text, background: activePanel === "count" ? theme.node.fill : "transparent" }}
+                title={`生成数量：${count} 张`}
+                aria-label="设置图片生成数量"
+                aria-expanded={activePanel === "count"}
+                onClick={() => updatePanel(activePanel === "count" ? null : "count")}
+            >
+                {count}×
+            </button>
             {panel}
         </>
     );
@@ -161,6 +169,7 @@ function ParameterTrigger({
     value,
     active,
     theme,
+    readonly = false,
     onClick,
 }: {
     buttonRef: RefObject<HTMLButtonElement | null>;
@@ -168,18 +177,20 @@ function ParameterTrigger({
     value: string;
     active: boolean;
     theme: (typeof canvasThemes)[keyof typeof canvasThemes];
-    onClick: () => void;
+    readonly?: boolean;
+    onClick?: () => void;
 }) {
     return (
         <button
             ref={buttonRef}
             type="button"
-            className="inline-flex h-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-sm transition hover:opacity-75"
+            className={`inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg px-2 text-sm transition ${readonly ? "!cursor-default" : "cursor-pointer hover:opacity-75"}`}
             style={{ color: theme.node.text, background: active ? theme.node.fill : "transparent" }}
             title={`${label}：${value}`}
             aria-label={`设置${label}`}
             aria-expanded={active}
-            onClick={onClick}
+            aria-disabled={readonly || undefined}
+            onClick={readonly ? undefined : onClick}
         >
             <span className="text-xs opacity-55">{label}</span>
             <span className="font-medium">{value}</span>
@@ -194,6 +205,7 @@ function ImageParameterPortal({
     theme,
     resolution,
     ratio,
+    ratioOptions,
     quality,
     count,
     onResolutionSelect,
@@ -207,6 +219,7 @@ function ImageParameterPortal({
     theme: (typeof canvasThemes)[keyof typeof canvasThemes];
     resolution: CanvasImageResolution;
     ratio: string;
+    ratioOptions: readonly string[];
     quality: string;
     count: number;
     onResolutionSelect: (value: CanvasImageResolution) => void;
@@ -256,7 +269,7 @@ function ImageParameterPortal({
                 </div>
             ) : activePanel === "ratio" ? (
                 <div className="grid grid-cols-8 gap-2">
-                    {CANVAS_IMAGE_ASPECT_RATIOS.map((option) => (
+                    {ratioOptions.map((option) => (
                         <ParameterOption key={option} active={ratio === option} theme={theme} onClick={() => onRatioSelect(option)}>
                             {ratioLabel(option)}
                         </ParameterOption>
@@ -272,7 +285,7 @@ function ImageParameterPortal({
                 </div>
             ) : activePanel === "count" ? (
                 <div className="grid grid-cols-3 gap-1.5">
-                    {Array.from({ length: 9 }, (_, index) => index + 1).map((value) => (
+                    {Array.from({ length: MAX_CANVAS_IMAGE_GENERATION_COUNT }, (_, index) => index + 1).map((value) => (
                         <ParameterOption key={value} active={count === value} theme={theme} onClick={() => onCountSelect(value)}>
                             {value}×
                         </ParameterOption>
@@ -300,12 +313,39 @@ function ParameterOption({ active, theme, onClick, children }: { active: boolean
     );
 }
 
-export function resolveCanvasImageParameters(metadata?: Pick<CanvasNodeMetadata, "imageResolution" | "imageAspectRatio" | "size">) {
+export function resolveCanvasImageAspectRatios(config: AiConfig, model: string): readonly string[] {
+    const ratios = modelOptionRatios(config, model);
+    return ratios?.length ? ratios : CANVAS_IMAGE_ASPECT_RATIOS;
+}
+
+export function resolveCanvasImageParameters(
+    metadata?: Pick<CanvasNodeMetadata, "imageResolution" | "imageAspectRatio" | "size">,
+    ratioOptions: readonly string[] = CANVAS_IMAGE_ASPECT_RATIOS,
+) {
     const explicitResolution = metadata?.imageResolution;
     const resolution: CanvasImageResolution = explicitResolution === "2k" || explicitResolution === "4k" || explicitResolution === "standard" ? explicitResolution : inferResolution(metadata?.size);
     const explicitRatio = metadata?.imageAspectRatio;
-    const ratio = explicitRatio && CANVAS_IMAGE_ASPECT_RATIOS.includes(explicitRatio as (typeof CANVAS_IMAGE_ASPECT_RATIOS)[number]) ? explicitRatio : inferRatio(metadata?.size);
+    const ratio = explicitRatio ? (ratioOptions.includes(explicitRatio) ? explicitRatio : ratioOptions[0] || "1:1") : inferRatio(metadata?.size, ratioOptions);
     return { resolution, ratio };
+}
+
+export function shouldHideCanvasImageQuality(model: string, metadata?: Pick<CanvasNodeMetadata, "imageResolution" | "imageAspectRatio" | "size">) {
+    const name = modelOptionName(model).toLowerCase();
+    const isBanana = name.includes("banana") || /gemini-(?:2[.]5-flash|3-pro|3[.]1-flash)-image/.test(name);
+    return isBanana || (name === "gpt-image-2" && resolveCanvasImageParameters(metadata).resolution === "standard");
+}
+
+export function shouldUseStandardCanvasImageResolution(model: string) {
+    return modelOptionName(model).toLowerCase() === "nano-banana-2-lite";
+}
+
+export function resolveCanvasImageRequestResolution(config: AiConfig, model: string, resolution: CanvasImageResolution): CanvasImageResolution {
+    if (resolution !== "standard") return resolution;
+    const supportedSizes = modelOptionImageSizes(config, model)?.map((size) => size.trim().toUpperCase());
+    if (!supportedSizes?.length || supportedSizes.includes("1K")) return "standard";
+    if (supportedSizes.includes("2K")) return "2k";
+    if (supportedSizes.includes("4K")) return "4k";
+    return resolution;
 }
 
 export function resolveCanvasImageSize(resolution: CanvasImageResolution, ratio: string) {
@@ -336,13 +376,13 @@ function inferResolution(size?: string): CanvasImageResolution {
     return "standard";
 }
 
-function inferRatio(size?: string) {
+function inferRatio(size?: string, ratioOptions: readonly string[] = CANVAS_IMAGE_ASPECT_RATIOS) {
     const normalized = size?.trim().toLowerCase();
-    if (normalized && CANVAS_IMAGE_ASPECT_RATIOS.includes(normalized as (typeof CANVAS_IMAGE_ASPECT_RATIOS)[number])) return normalized;
+    if (normalized && ratioOptions.includes(normalized)) return normalized;
     const dimensions = normalized?.match(/^(\d+)x(\d+)$/i);
     if (!dimensions) return "1:1";
     const target = Number(dimensions[1]) / Math.max(1, Number(dimensions[2]));
-    return CANVAS_IMAGE_ASPECT_RATIOS.filter((option) => option !== "auto").reduce((best, option) => {
+    return ratioOptions.filter((option) => option !== "auto").reduce((best, option) => {
         const [width, height] = option.split(":").map(Number);
         const [bestWidth, bestHeight] = best.split(":").map(Number);
         return Math.abs(width / height - target) < Math.abs(bestWidth / bestHeight - target) ? option : best;
@@ -358,5 +398,5 @@ function ratioLabel(value: string) {
 }
 
 function normalizeCount(value: string | number | undefined) {
-    return Math.max(1, Math.min(9, Math.floor(Math.abs(Number(value)) || 1)));
+    return normalizeCanvasImageGenerationCount(value);
 }

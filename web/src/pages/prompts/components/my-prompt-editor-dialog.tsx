@@ -12,11 +12,12 @@ const EMPTY_PROMPT: PersonalPromptInput = {
     tags: [],
 };
 
-export function MyPromptEditorDialog({ open, prompt, onSave, onClose }: { open: boolean; prompt: PersonalPrompt | null; onSave: (value: PersonalPromptInput) => void; onClose: () => void }) {
+export function MyPromptEditorDialog({ open, prompt, onSave, onClose }: { open: boolean; prompt: PersonalPrompt | null; onSave: (value: PersonalPromptInput) => void | Promise<void>; onClose: () => void }) {
     const { message } = App.useApp();
     const [draft, setDraft] = useState<PersonalPromptInput>(EMPTY_PROMPT);
     const [tags, setTags] = useState("");
     const [referenceImages, setReferenceImages] = useState("");
+    const [saving, setSaving] = useState(false);
 
     useEffect(() => {
         if (!open) return;
@@ -26,31 +27,40 @@ export function MyPromptEditorDialog({ open, prompt, onSave, onClose }: { open: 
     }, [open, prompt]);
 
     const patch = (value: Partial<PersonalPromptInput>) => setDraft((current) => ({ ...current, ...value }));
-    const save = () => {
+    const save = async () => {
         if (!draft.title.trim()) return message.warning("请输入标题");
         if (!draft.prompt.trim()) return message.warning("请输入提示词");
-        onSave({
-            ...draft,
-            title: draft.title.trim(),
-            prompt: draft.prompt.trim(),
-            description: draft.description.trim(),
-            coverUrl: draft.coverUrl.trim(),
-            tags: splitValues(tags, /[,，\n]/),
-            referenceImageUrls: splitValues(referenceImages, /\n/),
-        });
-        onClose();
+        setSaving(true);
+        try {
+            await onSave({
+                ...draft,
+                title: draft.title.trim(),
+                prompt: draft.prompt.trim(),
+                description: draft.description.trim(),
+                coverUrl: draft.coverUrl.trim(),
+                tags: splitValues(tags, /[,，\n]/),
+                referenceImageUrls: splitValues(referenceImages, /\n/),
+            });
+            onClose();
+        } catch {
+            // The caller presents the persistence error and keeps the draft open.
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
         <Modal
             title={prompt ? "编辑提示词" : "新增提示词"}
             open={open}
-            onCancel={onClose}
+            onCancel={() => !saving && onClose()}
             width={680}
             footer={
                 <Space>
-                    <Button onClick={onClose}>取消</Button>
-                    <Button type="primary" onClick={save}>
+                    <Button disabled={saving} onClick={onClose}>
+                        取消
+                    </Button>
+                    <Button type="primary" loading={saving} onClick={() => void save()}>
                         保存
                     </Button>
                 </Space>

@@ -11,6 +11,23 @@ const localVersion = readFileSync(resolve(webDir, "../VERSION"), "utf8").trim() 
 const localChangelog = readFileSync(resolve(webDir, "../CHANGELOG.md"), "utf8");
 const publicBase = `${process.env.VITE_BASE || "/"}`.replace(/\/?$/, "/");
 const visionaryHosted = process.env.VITE_VISIONARY_HOSTED === "1";
+const visionaryHostApiOrigin = process.env.VITE_VISIONARY_HOST_API_ORIGIN || "http://localhost:3001";
+const hostedDevContentSecurityPolicy = [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "connect-src 'self' blob: ws:",
+    "font-src 'self' data:",
+    "frame-ancestors https://visionary.beer http://localhost:* http://127.0.0.1:*",
+    "frame-src 'none'",
+    "img-src 'self' data: blob:",
+    "manifest-src 'self'",
+    "media-src 'self' data: blob:",
+    "object-src 'none'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
+    "worker-src 'self' blob:",
+    "form-action 'self'",
+].join("; ");
 const hostedAliases = visionaryHosted
     ? [
           { find: "@/router", replacement: resolve(webDir, "src/hosted/router.tsx") },
@@ -33,6 +50,49 @@ const hostedAliases = visionaryHosted
           { find: "@/lib/seedance-video", replacement: resolve(webDir, "src/hosted/seedance-video.ts") },
       ]
     : [];
+
+function hostedBuildMetadata(): Plugin {
+    return {
+        name: "visionary-hosted-build-metadata",
+        transformIndexHtml() {
+            if (!visionaryHosted) return [];
+            return [
+                {
+                    tag: "meta",
+                    attrs: {
+                        name: "visionary-release-version",
+                        content: process.env.VITE_VISIONARY_RELEASE_VERSION || "",
+                    },
+                    injectTo: "head",
+                },
+                {
+                    tag: "meta",
+                    attrs: {
+                        name: "visionary-source-revision",
+                        content: process.env.VITE_VISIONARY_SOURCE_REVISION || "",
+                    },
+                    injectTo: "head",
+                },
+                {
+                    tag: "meta",
+                    attrs: {
+                        name: "visionary-parent-origin",
+                        content: process.env.VITE_VISIONARY_PARENT_ORIGIN || "https://visionary.beer",
+                    },
+                    injectTo: "head",
+                },
+                {
+                    tag: "meta",
+                    attrs: {
+                        name: "visionary-public-base",
+                        content: process.env.VITE_BASE || "/",
+                    },
+                    injectTo: "head",
+                },
+            ];
+        },
+    };
+}
 
 // 暴露 /plugins/index.json:列出 public/plugins 下的本地插件文件,
 // 供前端自动发现并加入插件列表(默认关闭)。dev 下实时读目录,构建时产出静态清单。
@@ -64,10 +124,27 @@ function localPluginsManifest(): Plugin {
 
 export default defineConfig({
     base: process.env.VITE_BASE || "/",
-    plugins: [react(), ...(visionaryHosted ? [] : [localPluginsManifest()])],
+    // Hosted builds receive an explicit, sanitized environment from the
+    // release/local launchers. Never merge repository .env files into that
+    // security boundary.
+    envDir: visionaryHosted ? false : undefined,
+    plugins: [react(), ...(visionaryHosted ? [hostedBuildMetadata()] : [localPluginsManifest()])],
     server: {
+        headers: visionaryHosted
+            ? {
+                  "Content-Security-Policy": hostedDevContentSecurityPolicy,
+                  "Permissions-Policy": "camera=(), geolocation=(), microphone=(), payment=(), usb=()",
+                  "Referrer-Policy": "same-origin",
+                  "X-Content-Type-Options": "nosniff",
+              }
+            : undefined,
         proxy: visionaryHosted
-            ? {}
+            ? {
+                  "/api/canvas/v1": {
+                      target: visionaryHostApiOrigin,
+                      changeOrigin: false,
+                  },
+              }
             : {
                   // Route OpenAPI calls through the local dev server. The Visionary
                   // edge endpoint accepts Base64 reference images, while the

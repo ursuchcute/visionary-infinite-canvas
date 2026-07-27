@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { App, Modal, Segmented, Tooltip } from "antd";
 import { Download, Ellipsis, FolderPlus, Info, MessageSquare, Minus, Music2, Pencil, Plus, RefreshCw, Settings2, Trash2, Upload, Video } from "lucide-react";
 
@@ -86,6 +86,12 @@ export function CanvasNodeHoverToolbar({
     const copyText = useCopyText();
     const preview = useCanvasInteractionStore((state) => (node ? state.nodePreviews.get(node.id) : undefined));
     const viewport = useCanvasViewportStore((state) => state.viewport);
+    const toolbarRef = useRef<HTMLDivElement>(null);
+    const position = preview?.position || node?.position || { x: 0, y: 0 };
+    const width = preview?.width ?? node?.width ?? 0;
+    const rawLeft = viewport.x + (position.x + width / 2) * viewport.k;
+    const rawTop = viewport.y + position.y * viewport.k - (node?.type === CanvasNodeType.Text ? 32 : 14);
+    const [clampedPosition, setClampedPosition] = useState({ left: rawLeft, top: rawTop });
 
     useEffect(() => {
         try {
@@ -104,13 +110,33 @@ export function CanvasNodeHoverToolbar({
         setImageToolSettingsOpen(false);
     }, [node?.id]);
 
+    useLayoutEffect(() => {
+        const element = toolbarRef.current;
+        if (!node || !element) return;
+        const parent = element.offsetParent as HTMLElement | null;
+        if (!parent) return;
+        const update = () => {
+            const halfWidth = element.offsetWidth / 2;
+            const horizontalInset = Math.min(halfWidth + 8, parent.clientWidth / 2);
+            setClampedPosition({
+                left: Math.max(horizontalInset, Math.min(rawLeft, parent.clientWidth - horizontalInset)),
+                top: Math.max(element.offsetHeight + 8, Math.min(rawTop, parent.clientHeight - 8)),
+            });
+        };
+        update();
+        const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
+        observer?.observe(element);
+        observer?.observe(parent);
+        window.addEventListener("resize", update);
+        return () => {
+            observer?.disconnect();
+            window.removeEventListener("resize", update);
+        };
+    }, [extraTools.length, node, quickImageToolIds, rawLeft, rawTop, showImageToolLabels]);
+
     if (!node) return null;
 
     const activeNode = node;
-    const position = preview?.position || node.position;
-    const width = preview?.width ?? node.width;
-    const left = viewport.x + (position.x + width / 2) * viewport.k;
-    const top = viewport.y + position.y * viewport.k - (node.type === CanvasNodeType.Text ? 32 : 14);
     const isImage = node.type === CanvasNodeType.Image;
     const isVideo = node.type === CanvasNodeType.Video;
     const isAudio = node.type === CanvasNodeType.Audio;
@@ -185,8 +211,17 @@ export function CanvasNodeHoverToolbar({
     return (
         <>
             <div
-                className="hide-scrollbar absolute z-[70] flex h-12 w-max max-w-[60vw] -translate-x-1/2 -translate-y-full items-center overflow-x-auto overflow-y-hidden rounded-[18px] border text-[15px]"
-                style={{ left, top, background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item, boxShadow: colorTheme === "dark" ? "0 12px 32px rgba(0,0,0,.36)" : "0 8px 28px rgba(15,23,42,.12)" }}
+                ref={toolbarRef}
+                className="hide-scrollbar absolute z-[70] flex h-12 w-max -translate-x-1/2 -translate-y-full items-center overflow-x-auto overflow-y-hidden rounded-[18px] border text-[15px]"
+                style={{
+                    left: clampedPosition.left,
+                    top: clampedPosition.top,
+                    maxWidth: "min(60vw, calc(100% - 16px))",
+                    background: theme.toolbar.panel,
+                    borderColor: theme.toolbar.border,
+                    color: theme.toolbar.item,
+                    boxShadow: colorTheme === "dark" ? "0 12px 32px rgba(0,0,0,.36)" : "0 8px 28px rgba(15,23,42,.12)",
+                }}
                 onMouseEnter={() => onKeep(node.id)}
                 onMouseLeave={() => {
                     if (!imageToolSettingsOpen) onLeave();

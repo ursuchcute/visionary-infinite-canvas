@@ -334,6 +334,25 @@
         background: #16a34a !important;
     }
 
+    .canvas-image-toolbar-tool-checkbox .ant-checkbox {
+        border-color: rgba(255, 255, 255, 0.92) !important;
+        border-radius: 999px;
+        background: transparent !important;
+    }
+
+    .canvas-image-toolbar-tool-checkbox:hover .ant-checkbox:not(.ant-checkbox-checked) {
+        border-color: #ffffff !important;
+    }
+
+    .canvas-image-toolbar-tool-checkbox .ant-checkbox.ant-checkbox-checked {
+        border-color: #22c55e !important;
+        background: #22c55e !important;
+    }
+
+    .canvas-image-toolbar-tool-checkbox .ant-checkbox.ant-checkbox-checked::after {
+        border-color: #ffffff !important;
+    }
+
     .prompt-page-tabs .ant-tabs-nav {
         margin-bottom: 0;
     }

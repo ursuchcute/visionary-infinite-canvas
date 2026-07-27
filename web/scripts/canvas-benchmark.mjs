@@ -305,6 +305,7 @@ async function runLongConnectionCullingCase(browser) {
 
         const left = createCanvasNode(CanvasNodeType.Image, { x: 0, y: 0 });
         const right = createCanvasNode(CanvasNodeType.Config, { x: 2500, y: 0 });
+        const empty = createCanvasNode(CanvasNodeType.Image, { x: 5000, y: 0 });
         const connection = {
             id: "long-connection-culling-regression",
             fromNodeId: left.id,
@@ -312,11 +313,11 @@ async function runLongConnectionCullingCase(browser) {
         };
         const projectId = useCanvasStore.getState().importProject({
             title: "Long Connection Culling Regression",
-            nodes: [left, right],
+            nodes: [left, right, empty],
             connections: [connection],
             viewport: { x: 200, y: 320, k: 0.45 },
         });
-        return { projectId, rightNodeId: right.id, connectionId: connection.id };
+        return { projectId, leftNodeId: left.id, rightNodeId: right.id, emptyNodeId: empty.id, connectionId: connection.id };
     });
 
     await page.waitForTimeout(650);
@@ -349,10 +350,30 @@ async function runLongConnectionCullingCase(browser) {
     await page.waitForTimeout(250);
     samples.push(await readRenderedState());
 
+    await page.locator(`[data-node-id="${seeded.leftNodeId}"]`).click();
+    await page.evaluate(async () => {
+        const { useCanvasViewportStore } = await import("/src/stores/canvas/use-canvas-viewport-store.ts");
+        const current = useCanvasViewportStore.getState().viewport;
+        useCanvasViewportStore.getState().setViewport({ ...current, x: current.x + 1 });
+    });
+    await page.waitForTimeout(20);
+    await page.evaluate(async () => {
+        const { useCanvasViewportStore } = await import("/src/stores/canvas/use-canvas-viewport-store.ts");
+        useCanvasViewportStore.getState().setViewport({ x: -1530, y: 450, k: 0.45 });
+    });
+    // Use the middle-right blank area: top-left contains navigation controls,
+    // while the generated empty node is centered in the viewport.
+    await page.mouse.click(box.x + box.width - 80, box.y + box.height * 0.5);
+    const emptyNodeRetainedDuringDeselect = await page.evaluate((emptyNodeId) => Boolean(document.querySelector(`[data-node-id="${emptyNodeId}"]`)), seeded.emptyNodeId);
+    await page.waitForTimeout(150);
+    const emptyNodeRetainedAfterCullingCommit = await page.evaluate((emptyNodeId) => Boolean(document.querySelector(`[data-node-id="${emptyNodeId}"]`)), seeded.emptyNodeId);
+
     const result = {
         sampleCount: samples.length,
         rightNodeRetained: samples.every((sample) => sample.rightNodeMounted),
         connectionRetained: samples.every((sample) => sample.connectionMounted),
+        emptyNodeRetainedDuringDeselect,
+        emptyNodeRetainedAfterCullingCommit,
         pageErrors,
     };
     await context.close();
@@ -407,12 +428,19 @@ try {
             !result.connectionFollowsDrag ||
             !result.connectionSelectable ||
             !result.connectionContextMenu ||
+            result.renderedNodes !== result.nodes ||
             result.renderedConnections >= result.connections,
     );
     if (failed.length) {
         throw new Error(`视口隔离基准未通过：${failed.map((result) => `${result.nodes} 节点`).join("、")}`);
     }
-    if (longConnectionCulling.pageErrors.length || !longConnectionCulling.rightNodeRetained || !longConnectionCulling.connectionRetained) {
+    if (
+        longConnectionCulling.pageErrors.length ||
+        !longConnectionCulling.rightNodeRetained ||
+        !longConnectionCulling.connectionRetained ||
+        !longConnectionCulling.emptyNodeRetainedDuringDeselect ||
+        !longConnectionCulling.emptyNodeRetainedAfterCullingCommit
+    ) {
         throw new Error("长连线端点节点裁剪回归未通过");
     }
 } catch (error) {

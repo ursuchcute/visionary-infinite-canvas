@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,12 +11,40 @@ const files = walk(distRoot);
 const indexPath = path.join(distRoot, "index.html");
 
 if (!files.includes(indexPath)) fail("Hosted build is missing dist/index.html.");
+const symbolicLinks = files.filter((file) => lstatSync(file).isSymbolicLink());
+if (symbolicLinks.length) {
+    fail(`Hosted build must not publish symbolic links: ${relativeList(symbolicLinks)}`);
+}
 const sourceMaps = files.filter((file) => file.endsWith(".map"));
 if (sourceMaps.length) fail(`Hosted build must not publish source maps: ${relativeList(sourceMaps)}`);
 
 const indexHtml = readFileSync(indexPath, "utf8");
-const remoteDocumentAssets = Array.from(indexHtml.matchAll(/\b(?:src|href)=["'](https?:)?\/\//gi), (match) => match[0]);
-if (remoteDocumentAssets.length) fail("Hosted index.html references a remote script, stylesheet, or asset.");
+const documentAssets = Array.from(indexHtml.matchAll(/\b(?:src|href)=["']([^"']+)["']/gi), (match) => match[1]);
+if (!documentAssets.length) fail("Hosted index.html does not reference any local assets.");
+for (const reference of documentAssets) {
+    if (!reference.startsWith("/")) {
+        fail(`Hosted index.html asset must use the production root base: ${reference}`);
+    }
+    let assetUrl;
+    try {
+        assetUrl = new URL(reference, "https://canvas.invalid/");
+    } catch {
+        fail(`Hosted index.html contains an invalid asset URL: ${reference}`);
+    }
+    if (assetUrl.origin !== "https://canvas.invalid") {
+        fail(`Hosted index.html references a remote script, stylesheet, or asset: ${reference}`);
+    }
+    let pathname;
+    try {
+        pathname = decodeURIComponent(assetUrl.pathname);
+    } catch {
+        fail(`Hosted index.html contains an invalid encoded asset path: ${reference}`);
+    }
+    const target = path.resolve(distRoot, `.${pathname}`);
+    if (!target.startsWith(`${distRoot}${path.sep}`) || !existsSync(target) || !statSync(target).isFile()) {
+        fail(`Hosted index.html references a missing or unsafe local asset: ${reference}`);
+    }
+}
 const inlineScripts = Array.from(indexHtml.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi))
     .map((match) => match[1].trim())
     .filter(Boolean);
@@ -36,12 +64,22 @@ for (const [needle, label] of requiredContracts) {
     if (!scripts.includes(needle)) fail(`Hosted build is missing ${label}.`);
 }
 const expectedRevision = String(process.env.VITE_VISIONARY_SOURCE_REVISION || "").trim();
-if (expectedRevision && (!/^[a-f0-9]{40}$/i.test(expectedRevision) || !scripts.includes(expectedRevision))) {
+if (expectedRevision && (!/^[a-f0-9]{40}$/i.test(expectedRevision) || readBuildMetadata("visionary-source-revision") !== expectedRevision)) {
     fail("Hosted build does not contain the exact requested source revision.");
 }
 const expectedVersion = String(process.env.VITE_VISIONARY_RELEASE_VERSION || "").trim();
-if (expectedVersion && !scripts.includes(expectedVersion)) {
+if (expectedVersion && readBuildMetadata("visionary-release-version") !== expectedVersion) {
     fail("Hosted build does not contain the requested release version.");
+}
+const expectedParentOrigin = String(process.env.VITE_VISIONARY_PARENT_ORIGIN || "")
+    .trim()
+    .replace(/\/+$/, "");
+if (expectedParentOrigin && readBuildMetadata("visionary-parent-origin").replace(/\/+$/, "") !== expectedParentOrigin) {
+    fail("Hosted build does not contain the requested parent origin.");
+}
+const expectedBase = String(process.env.VITE_BASE || "").trim();
+if (expectedBase && (expectedBase !== "/" || readBuildMetadata("visionary-public-base") !== expectedBase)) {
+    fail(`Hosted production base must be exactly /; received ${expectedBase}.`);
 }
 
 const deniedPatterns = [
@@ -81,6 +119,12 @@ function walk(root) {
 
 function relativeList(paths) {
     return paths.map((file) => path.relative(distRoot, file)).join(", ");
+}
+
+function readBuildMetadata(name) {
+    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = new RegExp(`<meta\\s+name=["']${escapedName}["']\\s+content=["']([^"']*)["']\\s*\\/?>`, "i").exec(indexHtml);
+    return match?.[1] || "";
 }
 
 function formatBytes(bytes) {

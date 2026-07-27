@@ -162,6 +162,18 @@ export type VisionaryCanvasSessionEstablishedMessage = {
     nonce: string;
 };
 
+export type VisionaryCanvasNavigateHomeMessage = {
+    type: "visionary.canvas.navigate-home";
+    protocolVersion: 1;
+    nonce: string;
+};
+
+export type VisionaryCanvasNavigateHomeAckMessage = {
+    type: "visionary.canvas.navigate-home.ack";
+    protocolVersion: 1;
+    nonce: string;
+};
+
 export type VisionaryCanvasTicketMessage = {
     type: "visionary.canvas.ticket";
     protocolVersion: 1;
@@ -172,6 +184,7 @@ export type VisionaryCanvasTicketMessage = {
 
 export type VisionaryCanvasPortMessage =
     | VisionaryCanvasTicketMessage
+    | VisionaryCanvasNavigateHomeAckMessage
     | {
           type: "visionary.canvas.credits.updated";
           protocolVersion: 1;

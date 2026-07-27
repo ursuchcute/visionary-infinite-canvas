@@ -136,7 +136,7 @@ export const imageToolDefinitions: ImageToolDefinition[] = [
     },
 ];
 
-const availableImageToolDefinitions = imageToolDefinitions.filter((tool) => !VISIONARY_HOSTED || (tool.id !== "maskEdit" && tool.id !== "reversePrompt"));
+const availableImageToolDefinitions = imageToolDefinitions.filter((tool) => !["resize", "upscale"].includes(tool.id) && (!VISIONARY_HOSTED || (tool.id !== "maskEdit" && tool.id !== "reversePrompt")));
 
 export const defaultImageQuickToolIds: ImageQuickToolId[] = [...defaultBaseToolIds, ...availableImageToolDefinitions.filter((tool) => tool.defaultVisible).map((tool) => tool.id)];
 

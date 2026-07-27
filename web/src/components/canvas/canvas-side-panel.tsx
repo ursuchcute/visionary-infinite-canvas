@@ -1,20 +1,22 @@
 import { memo, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { App, Empty, Input, Popconfirm, Select, Spin, Tag, Tooltip } from "antd";
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, Check, ChevronLeft, ChevronRight, Download, Eye, FileText, Image as ImageIcon, ListChecks, Music2, Plus, Search, Settings2, Square, Trash2, Type, Video } from "lucide-react";
+import { BookOpen, Check, ChevronLeft, ChevronRight, Download, Eye, FileText, Image as ImageIcon, ListChecks, Music2, Pencil, Plus, Search, Settings2, Square, Trash2, Type, Video } from "lucide-react";
 import { motion } from "motion/react";
 
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
 import { exportCanvasNodes } from "@/lib/canvas/canvas-export";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
 import { cn } from "@/lib/utils";
+import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
+import { MyPromptEditorDialog } from "@/pages/prompts/components/my-prompt-editor-dialog";
 import { PromptDetailDialog } from "@/pages/prompts/components/prompt-detail-dialog";
 import { fetchSourcePrompts, personalPromptToPrompt, type Prompt } from "@/services/api/prompts";
 import { uploadMediaFile } from "@/services/file-storage";
 import { uploadImage } from "@/services/image-storage";
-import { useAssetStore, type Asset, type AssetKind } from "@/stores/use-asset-store";
+import { flushAssetStorePersistence, useAssetStore, type Asset, type AssetKind } from "@/stores/use-asset-store";
 import { usePromptSourceStore } from "@/stores/use-prompt-source-store";
-import { usePromptStore } from "@/stores/use-prompt-store";
+import { flushPromptStorePersistence, usePromptStore, type PersonalPrompt, type PersonalPromptInput } from "@/stores/use-prompt-store";
 import { CANVAS_SIDE_PANEL_MAX_WIDTH, CANVAS_SIDE_PANEL_MIN_WIDTH, CANVAS_SIDE_PANEL_MOTION_MS, useCanvasSidePanelStore } from "@/stores/use-canvas-side-panel-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
@@ -51,6 +53,13 @@ const STATUS_COLOR: Record<string, string> = {
 
 export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onInsertAsset }: Props) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const visibleNodes = useMemo(() => {
+        const nodeById = new Map(nodes.map((node) => [node.id, node]));
+        return nodes.filter((node) => {
+            const rootId = node.metadata?.batchRootId;
+            return !rootId || Boolean(nodeById.get(rootId)?.metadata?.imageBatchExpanded);
+        });
+    }, [nodes]);
     const [tab, setTab] = useState<PanelTab>("canvas");
     const width = useCanvasSidePanelStore((state) => state.width);
     const panelOpen = useCanvasSidePanelStore((state) => state.panelOpen);
@@ -104,7 +113,7 @@ export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onInsertA
                 </div>
                 <div className="mt-2 min-h-0 flex-1 overflow-hidden">
                     {tab === "canvas" ? (
-                        <CanvasNodesTab nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={onFocusNode} theme={theme} />
+                        <CanvasNodesTab nodes={visibleNodes} selectedNodeIds={selectedNodeIds} onFocusNode={onFocusNode} theme={theme} />
                     ) : tab === "assets" ? (
                         <CanvasAssetsTab onInsert={onInsertAsset} theme={theme} />
                     ) : (
@@ -130,7 +139,7 @@ export function CanvasSidePanelToggle() {
                 onClick={togglePanel}
                 aria-label={panelOpen ? "收起面板" : "展开面板"}
                 className="absolute left-0 top-1/2 z-[65] grid h-12 w-6 -translate-y-1/2 cursor-pointer place-items-center rounded-l-none rounded-r-[3px] border border-l-0 backdrop-blur transition hover:bg-black/5 dark:hover:bg-white/10 xl:h-[60px] xl:w-7 [&_svg]:size-3.5 xl:[&_svg]:size-4"
-                style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
+                style={panelOpen ? { background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text } : { background: "#ff6a00", borderColor: "#ff6a00", color: "#ffffff" }}
             >
                 {panelOpen ? <ChevronLeft /> : <ChevronRight />}
             </button>
@@ -331,6 +340,7 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, theme }: { onI
     const handleFiles = async (fileList: FileList | null) => {
         const files = Array.from(fileList || []);
         if (!files.length) return;
+        const previousAssets = useAssetStore.getState().assets;
         setUploading(true);
         const hide = message.loading("正在添加资产…", 0);
         let added = 0;
@@ -346,15 +356,34 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, theme }: { onI
                     added += 1;
                 }
             }
+            if (VISIONARY_HOSTED && added) await flushAssetStorePersistence();
             if (added) message.success(`已添加 ${added} 个资产`);
             else message.warning("仅支持图片或视频文件");
         } catch (error) {
+            if (VISIONARY_HOSTED) {
+                useAssetStore.setState({ assets: previousAssets });
+                await flushAssetStorePersistence().catch(() => undefined);
+            }
             console.error(error);
-            message.error("添加失败，请重试");
+            message.error("资产保存失败，请释放浏览器存储空间后重试");
         } finally {
             hide();
             setUploading(false);
             if (fileInputRef.current) fileInputRef.current.value = "";
+        }
+    };
+
+    const removeAssetDurably = async (id: string) => {
+        const previousAssets = useAssetStore.getState().assets;
+        removeAsset(id);
+        try {
+            if (VISIONARY_HOSTED) await flushAssetStorePersistence();
+            if (VISIONARY_HOSTED) useAssetStore.getState().cleanupImages();
+            message.success("资产已移除");
+        } catch {
+            useAssetStore.setState({ assets: previousAssets });
+            await flushAssetStorePersistence().catch(() => undefined);
+            message.error("资产移除失败，请释放浏览器存储空间后重试");
         }
     };
 
@@ -406,7 +435,7 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, theme }: { onI
                                     {isCollapsed ? null : (
                                         <div className="grid grid-cols-2 gap-2 px-1 pb-2 pt-1">
                                             {group.items.map((asset) => (
-                                                <AssetCard key={asset.id} asset={asset} theme={theme} onInsert={() => onInsert(buildInsertPayload(asset))} onRemove={() => (removeAsset(asset.id), message.success("资产已移除"))} />
+                                                <AssetCard key={asset.id} asset={asset} theme={theme} onInsert={() => onInsert(buildInsertPayload(asset))} onRemove={() => removeAssetDurably(asset.id)} />
                                             ))}
                                         </div>
                                     )}
@@ -466,10 +495,15 @@ const CanvasPromptsTab = memo(function CanvasPromptsTab({ onInsert, theme }: { o
     const { message } = App.useApp();
     const sources = usePromptSourceStore((state) => state.sources);
     const personalPrompts = usePromptStore((state) => state.prompts);
+    const addPrompt = usePromptStore((state) => state.addPrompt);
+    const updatePrompt = usePromptStore((state) => state.updatePrompt);
+    const removePrompt = usePromptStore((state) => state.removePrompt);
     const enabledSources = useMemo(() => sources.filter((source) => source.enabled), [sources]);
     const [keyword, setKeyword] = useState("");
     const [expanded, setExpanded] = useState<Record<string, boolean>>({ personal: true });
     const [detail, setDetail] = useState<Prompt | null>(null);
+    const [editorOpen, setEditorOpen] = useState(false);
+    const [editingPrompt, setEditingPrompt] = useState<PersonalPrompt | null>(null);
 
     const copyPrompt = async (prompt: string) => {
         try {
@@ -480,10 +514,48 @@ const CanvasPromptsTab = memo(function CanvasPromptsTab({ onInsert, theme }: { o
         }
     };
 
+    const openNewPrompt = () => {
+        setEditingPrompt(null);
+        setEditorOpen(true);
+    };
+
+    const savePersonalPrompt = async (input: PersonalPromptInput) => {
+        const previousPrompts = usePromptStore.getState().prompts;
+        if (editingPrompt) updatePrompt(editingPrompt.id, input);
+        else addPrompt(input);
+        try {
+            if (VISIONARY_HOSTED) await flushPromptStorePersistence();
+            message.success(editingPrompt ? "提示词已更新" : "提示词已添加");
+        } catch (error) {
+            usePromptStore.setState({ prompts: previousPrompts });
+            await flushPromptStorePersistence().catch(() => undefined);
+            message.error("提示词保存失败，请释放浏览器存储空间后重试");
+            throw error;
+        }
+    };
+
+    const deletePersonalPrompt = async (id: string) => {
+        const previousPrompts = usePromptStore.getState().prompts;
+        removePrompt(id);
+        try {
+            if (VISIONARY_HOSTED) await flushPromptStorePersistence();
+            if (detail?.id === id) setDetail(null);
+            message.success("提示词已删除");
+        } catch {
+            usePromptStore.setState({ prompts: previousPrompts });
+            await flushPromptStorePersistence().catch(() => undefined);
+            message.error("提示词删除失败，请释放浏览器存储空间后重试");
+        }
+    };
+
     return (
         <div className="flex h-full flex-col">
-            <div className="px-3 pb-2.5 pt-1">
-                <Input size="small" allowClear prefix={<Search className="size-3.5 text-stone-400" />} placeholder="搜索提示词" value={keyword} onChange={(e) => setKeyword(e.target.value)} />
+            <div className="flex items-center gap-1.5 px-3 pb-2.5 pt-1">
+                <Input className="min-w-0 flex-1" size="small" allowClear prefix={<Search className="size-3.5 text-stone-400" />} placeholder="搜索提示词" value={keyword} onChange={(e) => setKeyword(e.target.value)} />
+                <button type="button" onClick={openNewPrompt} className="flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs transition hover:bg-black/5 dark:hover:bg-white/10" aria-label="添加提示词">
+                    <Plus className="size-3.5" />
+                    添加
+                </button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
                 <div className="space-y-1">
@@ -495,6 +567,11 @@ const CanvasPromptsTab = memo(function CanvasPromptsTab({ onInsert, theme }: { o
                         onToggle={() => setExpanded((prev) => ({ ...prev, personal: !prev.personal }))}
                         onInsert={onInsert}
                         onView={setDetail}
+                        onEdit={(item) => {
+                            setEditingPrompt(personalPrompts.find((prompt) => prompt.id === item.id) || null);
+                            setEditorOpen(true);
+                        }}
+                        onDelete={deletePersonalPrompt}
                     />
                     {enabledSources.length ? (
                         <>
@@ -518,6 +595,7 @@ const CanvasPromptsTab = memo(function CanvasPromptsTab({ onInsert, theme }: { o
                 </div>
             </div>
             <PromptDetailDialog prompt={detail} onClose={() => setDetail(null)} onCopy={(prompt) => void copyPrompt(prompt)} />
+            <MyPromptEditorDialog open={editorOpen} prompt={editingPrompt} onSave={savePersonalPrompt} onClose={() => setEditorOpen(false)} />
         </div>
     );
 });
@@ -530,6 +608,8 @@ function PersonalPromptGroup({
     onToggle,
     onInsert,
     onView,
+    onEdit,
+    onDelete,
 }: {
     items: Prompt[];
     keyword: string;
@@ -538,6 +618,8 @@ function PersonalPromptGroup({
     onToggle: () => void;
     onInsert: (payload: InsertAssetPayload) => void;
     onView: (prompt: Prompt) => void;
+    onEdit: (prompt: Prompt) => void;
+    onDelete: (id: string) => void;
 }) {
     const showResults = open || !!keyword.trim();
     const filtered = useMemo(() => {
@@ -556,7 +638,15 @@ function PersonalPromptGroup({
             {showResults ? (
                 <div className="space-y-1.5 px-1 pb-2 pt-1">
                     {filtered.map((item) => (
-                        <PromptRow key={item.id} item={item} theme={theme} onInsert={() => onInsert({ kind: "text", content: item.prompt, title: item.title })} onView={() => onView(item)} />
+                        <PromptRow
+                            key={item.id}
+                            item={item}
+                            theme={theme}
+                            onInsert={() => onInsert({ kind: "text", content: item.prompt, title: item.title })}
+                            onView={() => onView(item)}
+                            onEdit={() => onEdit(item)}
+                            onDelete={() => onDelete(item.id)}
+                        />
                     ))}
                     {!filtered.length ? <div className="py-4 text-center text-xs opacity-40">{keyword.trim() ? "无匹配提示词" : "还没有收藏提示词"}</div> : null}
                 </div>
@@ -630,7 +720,7 @@ function PromptSourceGroup({
     );
 }
 
-function PromptRow({ item, theme, onInsert, onView }: { item: Prompt; theme: CanvasTheme; onInsert: () => void; onView: () => void }) {
+function PromptRow({ item, theme, onInsert, onView, onEdit, onDelete }: { item: Prompt; theme: CanvasTheme; onInsert: () => void; onView: () => void; onEdit?: () => void; onDelete?: () => void }) {
     return (
         <div className="group relative flex items-center gap-2.5 rounded-lg px-2 py-2 transition hover:bg-black/5 dark:hover:bg-white/5">
             {item.coverUrl ? (
@@ -644,7 +734,7 @@ function PromptRow({ item, theme, onInsert, onView }: { item: Prompt; theme: Can
                 <div className="truncate text-sm font-medium leading-snug">{item.title}</div>
                 <div className="mt-0.5 truncate text-xs leading-snug opacity-50">{item.prompt}</div>
             </button>
-            <div className="flex shrink-0 flex-col items-center gap-0.5">
+            <div className={cn("grid shrink-0 gap-0.5", onEdit || onDelete ? "grid-cols-2" : "grid-cols-1")}>
                 <button type="button" onClick={onView} className="grid size-6 place-items-center rounded-md opacity-60 transition hover:bg-black/10 hover:opacity-100 dark:hover:bg-white/10" aria-label="查看详情" title="查看详情">
                     <Eye className="size-3.5" />
                 </button>
@@ -658,6 +748,18 @@ function PromptRow({ item, theme, onInsert, onView }: { item: Prompt; theme: Can
                 >
                     <Plus className="size-3.5" />
                 </button>
+                {onEdit ? (
+                    <button type="button" onClick={onEdit} className="grid size-6 place-items-center rounded-md opacity-60 transition hover:bg-black/10 hover:opacity-100 dark:hover:bg-white/10" aria-label="编辑提示词" title="编辑提示词">
+                        <Pencil className="size-3.5" />
+                    </button>
+                ) : null}
+                {onDelete ? (
+                    <Popconfirm title="删除这条提示词？" okText="删除" cancelText="取消" onConfirm={onDelete}>
+                        <button type="button" className="grid size-6 place-items-center rounded-md text-red-500 opacity-60 transition hover:bg-red-500/10 hover:opacity-100" aria-label="删除提示词" title="删除提示词">
+                            <Trash2 className="size-3.5" />
+                        </button>
+                    </Popconfirm>
+                ) : null}
             </div>
         </div>
     );

@@ -143,7 +143,15 @@ export function buildNodeResponseMessages(context: NodeGenerationContext): AiTex
 
 export async function hydrateNodeGenerationContext(context: NodeGenerationContext) {
     const { imageToDataUrl } = await import("@/services/image-storage");
-    return { ...context, referenceImages: await Promise.all(context.referenceImages.map(async (image) => ({ ...image, dataUrl: await imageToDataUrl(image) }))) };
+    const referenceImages: ReferenceImage[] = [];
+    // Text/multimodal requests still need data URLs, but reading every large
+    // reference into Base64 at once can exhaust the tab. Hydrate sequentially;
+    // Hosted image generation bypasses this helper and streams storage Blobs
+    // through its existing bounded compressor instead.
+    for (const image of context.referenceImages) {
+        referenceImages.push({ ...image, dataUrl: await imageToDataUrl(image) });
+    }
+    return { ...context, referenceImages };
 }
 
 function readNodeTextInput(node: CanvasNodeData) {

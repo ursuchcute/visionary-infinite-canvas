@@ -7,7 +7,7 @@ import { useCanvasInteractionStore } from "@/stores/canvas/use-canvas-interactio
 import { useCanvasViewportStore } from "@/stores/canvas/use-canvas-viewport-store";
 import { type CanvasNodeData, type ViewportTransform } from "@/types/canvas";
 
-export function Minimap({ nodes, viewportSize, onViewportChange }: { nodes: CanvasNodeData[]; viewportSize: { width: number; height: number }; onViewportChange: (viewport: ViewportTransform) => void }) {
+export function Minimap({ nodes, viewport, viewportSize, onViewportChange }: { nodes: CanvasNodeData[]; viewport: ViewportTransform; viewportSize: { width: number; height: number }; onViewportChange: (viewport: ViewportTransform) => void }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const containerRef = useRef<HTMLDivElement>(null);
     const [isDragging, setIsDragging] = useState(false);
@@ -36,6 +36,12 @@ export function Minimap({ nodes, viewportSize, onViewportChange }: { nodes: Canv
             maxY = Math.max(maxY, position.y + nodeHeight);
         });
 
+        const viewportScale = Math.max(viewport.k, 0.05);
+        minX = Math.min(minX, -viewport.x / viewportScale);
+        minY = Math.min(minY, -viewport.y / viewportScale);
+        maxX = Math.max(maxX, (viewportSize.width - viewport.x) / viewportScale);
+        maxY = Math.max(maxY, (viewportSize.height - viewport.y) / viewportScale);
+
         minX -= 500;
         minY -= 500;
         maxX += 500;
@@ -52,7 +58,7 @@ export function Minimap({ nodes, viewportSize, onViewportChange }: { nodes: Canv
             scale: nextScale,
             offset: { x: (width - mapContentW) / 2, y: (height - mapContentH) / 2 },
         };
-    }, [nodePreviews, nodes]);
+    }, [nodePreviews, nodes, viewport.k, viewport.x, viewport.y, viewportSize.height, viewportSize.width]);
 
     const toMinimap = useCallback(
         (worldX: number, worldY: number) => {
@@ -95,7 +101,12 @@ export function Minimap({ nodes, viewportSize, onViewportChange }: { nodes: Canv
     };
 
     return (
-        <div className="absolute bottom-24 left-6 z-50 overflow-hidden rounded-lg border shadow-2xl backdrop-blur-sm" style={{ width, height, background: theme.toolbar.panel, borderColor: theme.toolbar.border }}>
+        <div
+            className="absolute bottom-24 left-6 z-50 overflow-hidden rounded-lg border shadow-2xl backdrop-blur-sm"
+            style={{ width, height, background: theme.toolbar.panel, borderColor: theme.toolbar.border }}
+            aria-label="画布小地图，白框表示当前可见区域"
+            title="白框表示当前可见区域，可点击或拖动小地图进行导航"
+        >
             <div
                 ref={containerRef}
                 className="relative h-full w-full cursor-crosshair"

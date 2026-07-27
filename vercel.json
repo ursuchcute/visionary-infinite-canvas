@@ -1,7 +1,7 @@
 {
   "framework": "vite",
-  "installCommand": "cd web && bun install",
-  "buildCommand": "cd web && bun run build",
+  "installCommand": "cd web && npm ci --include=dev --no-audit --no-fund",
+  "buildCommand": "cd web && npm run build",
   "outputDirectory": "web/dist",
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }

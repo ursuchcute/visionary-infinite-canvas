@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { App, Button } from "antd";
 import { Download, FileUp, Plus, Sparkles } from "lucide-react";
@@ -6,10 +6,15 @@ import { Download, FileUp, Plus, Sparkles } from "lucide-react";
 import { LazyCanvasDeleteProjectsDialog } from "@/components/canvas/lazy-canvas-delete-projects-dialog";
 import { CanvasProjectCard } from "@/components/canvas/canvas-project-card";
 import type { CanvasExportFile } from "@/types/canvas-export";
-import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
+import { flushCanvasStorePersistence, useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useCanvasUiStore } from "@/stores/canvas/use-canvas-ui-store";
 import { APP_SHORT_NAME } from "@/constant/env";
 import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
+import {
+    CanvasProjectInUseError,
+    CanvasProjectLockUnsupportedError,
+    withHostedCanvasStoreLock,
+} from "@/lib/canvas/canvas-project-lock";
 
 export default function CanvasPage() {
     const { message } = App.useApp();
@@ -17,6 +22,7 @@ export default function CanvasPage() {
     const [searchParams] = useSearchParams();
     const inputRef = useRef<HTMLInputElement>(null);
     const autoOpenRef = useRef(false);
+    const [creating, setCreating] = useState(false);
     const hydrated = useCanvasStore((state) => state.hydrated);
     const projects = useCanvasStore((state) => state.projects);
     const createProject = useCanvasStore((state) => state.createProject);
@@ -30,7 +36,37 @@ export default function CanvasPage() {
     const enterProject = (id: string) => {
         navigate(`/canvas/${id}${agentQuery}`);
     };
-    const createAndEnter = () => enterProject(createProject(`${APP_SHORT_NAME} ${projects.length + 1}`));
+    const createAndEnter = async () => {
+        if (creating) return false;
+        setCreating(true);
+        let projectId = "";
+        try {
+            await withHostedCanvasStoreLock(async () => {
+                const previousProjects = useCanvasStore.getState().projects;
+                try {
+                    projectId = createProject(`${APP_SHORT_NAME} ${previousProjects.length + 1}`);
+                    await flushCanvasStorePersistence();
+                } catch (error) {
+                    useCanvasStore.setState({ projects: previousProjects });
+                    throw error;
+                }
+            });
+            if (!projectId) throw new Error("CREATE_PROJECT_FAILED");
+            enterProject(projectId);
+            return true;
+        } catch (error) {
+            if (error instanceof CanvasProjectInUseError) {
+                message.warning("另一个页面正在使用画布，请先关闭后再新建。");
+            } else if (error instanceof CanvasProjectLockUnsupportedError) {
+                message.error("当前浏览器不支持安全画布锁，请升级浏览器后再新建。");
+            } else {
+                message.error("新建画布失败，请稍后重试。");
+            }
+            return false;
+        } finally {
+            setCreating(false);
+        }
+    };
     const exportSelectedProjects = async () => {
         const { exportCanvasProjects } = await import("@/lib/canvas/canvas-export");
         await exportCanvasProjects(
@@ -68,8 +104,14 @@ export default function CanvasPage() {
     useEffect(() => {
         if (!hydrated || autoOpenRef.current || (mode !== "new" && mode !== "recent")) return;
         autoOpenRef.current = true;
-        enterProject(mode === "new" ? createProject(`${APP_SHORT_NAME} ${projects.length + 1}`) : projects[0]?.id || createProject(`${APP_SHORT_NAME} ${projects.length + 1}`));
-    }, [createProject, hydrated, mode, projects]);
+        if (mode === "recent" && projects[0]?.id) {
+            enterProject(projects[0].id);
+            return;
+        }
+        void createAndEnter().then((opened) => {
+            if (!opened) navigate("/canvas", { replace: true });
+        });
+    }, [hydrated, mode, projects]);
 
     if (hydrated && (mode === "new" || mode === "recent")) return <main className="flex h-full items-center justify-center bg-background text-sm text-stone-500">正在打开画布...</main>;
 
@@ -101,7 +143,7 @@ export default function CanvasPage() {
                             </Button>
                         ) : null}
                         {hasProjects ? (
-                            <Button className={primaryButtonClass} icon={<Plus className="size-4" />} onClick={createAndEnter}>
+                            <Button className={primaryButtonClass} loading={creating} icon={<Plus className="size-4" />} onClick={() => void createAndEnter()}>
                                 新建画布
                             </Button>
                         ) : null}
@@ -126,7 +168,7 @@ export default function CanvasPage() {
                                 <Sparkles className="size-5" />
                             </span>
                             <h2 className="mt-5 text-2xl font-semibold tracking-tight">开始第一张无限画布</h2>
-                            <Button className={`${primaryButtonClass} mt-7`} icon={<Plus className="size-4" />} onClick={createAndEnter}>
+                            <Button className={`${primaryButtonClass} mt-7`} loading={creating} icon={<Plus className="size-4" />} onClick={() => void createAndEnter()}>
                                 新建画布
                             </Button>
                         </div>

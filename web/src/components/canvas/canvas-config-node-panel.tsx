@@ -9,13 +9,14 @@ import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
 import { CanvasAudioSettingsPopover, type CanvasAudioSettingKey } from "@/components/canvas/canvas-audio-settings-popover";
 import { CanvasVideoSettingsPopover } from "@/components/canvas/canvas-video-settings-popover";
-import { CanvasImageParameterControls } from "./canvas-image-parameter-controls";
+import { CanvasImageParameterControls, shouldHideCanvasImageQuality } from "./canvas-image-parameter-controls";
 import type { CanvasGenerationMode, CanvasNodeData, CanvasNodeMetadata } from "@/types/canvas";
 import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
 
 type CanvasConfigNodePanelProps = {
     node: CanvasNodeData;
     isRunning: boolean;
+    isConfirming?: boolean;
     inputSummary: { textCount: number; imageCount: number; videoCount: number; audioCount: number };
     onConfigChange: (nodeId: string, patch: Partial<CanvasNodeMetadata>) => void;
     onGenerate: (nodeId: string) => void;
@@ -23,7 +24,7 @@ type CanvasConfigNodePanelProps = {
     onComposerToggle: () => void;
 };
 
-export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigChange, onGenerate, onStop, onComposerToggle }: CanvasConfigNodePanelProps) {
+export function CanvasConfigNodePanel({ node, isRunning, isConfirming = false, inputSummary, onConfigChange, onGenerate, onStop, onComposerToggle }: CanvasConfigNodePanelProps) {
     const globalConfig = useEffectiveConfig();
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
@@ -33,6 +34,7 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigC
     const hasAnyInput = Boolean(inputSummary.textCount || inputSummary.imageCount || inputSummary.videoCount || inputSummary.audioCount);
     const hasComposerContent = Boolean((node.metadata?.composerContent ?? node.metadata?.prompt ?? "").trim());
     const canGenerate = hasComposerContent || (mode === "audio" ? inputSummary.textCount > 0 : hasAnyInput);
+    const showConfirming = VISIONARY_HOSTED && isConfirming && !isRunning;
 
     return (
         <div className="flex h-full w-full cursor-move flex-col px-3 pb-3 pt-7 text-sm" style={{ color: theme.node.text }} onWheel={(event) => event.stopPropagation()}>
@@ -43,7 +45,12 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigC
                         size="small"
                         className="canvas-config-mode !rounded-md !p-0.5"
                         value={mode}
-                        onChange={(value) => onConfigChange(node.id, { generationMode: value as CanvasGenerationMode })}
+                        onChange={(value) =>
+                            onConfigChange(node.id, {
+                                generationMode: value as CanvasGenerationMode,
+                                ...(VISIONARY_HOSTED && value === "text" ? { count: 1 } : {}),
+                            })
+                        }
                         options={[
                             {
                                 value: "image",
@@ -107,7 +114,7 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigC
                     <CanvasVideoSettingsPopover config={config} placement="topRight" buttonClassName="canvas-compact-control !h-10 !w-full !justify-start !rounded-lg !px-2" onConfigChange={(key, value) => onConfigChange(node.id, videoConfigPatch(key, value))} />
                 ) : mode === "image" && VISIONARY_HOSTED ? (
                     <div className="flex min-w-0 items-center overflow-x-auto">
-                        <CanvasImageParameterControls config={config} metadata={node.metadata} onConfigPatch={(patch) => onConfigChange(node.id, patch)} />
+                            <CanvasImageParameterControls config={config} metadata={node.metadata} hideQuality={shouldHideCanvasImageQuality(config.model, node.metadata)} onConfigPatch={(patch) => onConfigChange(node.id, patch)} />
                     </div>
                 ) : mode === "image" ? (
                     <CanvasImageSettingsPopover config={config} placement="topRight" autoAdjustOverflow={false} buttonClassName="canvas-compact-control !h-10 !w-full !justify-start !rounded-lg !px-2" onConfigChange={(key, value) => onConfigChange(node.id, key === "count" ? { count: Number(value) || 1 } : { [key]: value })} />
@@ -120,12 +127,17 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigC
                 type="primary"
                 className="mt-auto !h-9 !w-full !cursor-pointer !rounded-lg"
                 danger={isRunning}
-                disabled={!isRunning && !canGenerate}
+                disabled={showConfirming || (!isRunning && !canGenerate)}
                 onMouseDown={(event) => event.stopPropagation()}
-                onClick={() => (isRunning ? onStop(node.id) : onGenerate(node.id))}
+                onClick={() => (showConfirming ? undefined : isRunning ? onStop(node.id) : onGenerate(node.id))}
             >
                 <span className="inline-flex items-center gap-1.5">
-                    {isRunning ? (
+                    {showConfirming ? (
+                        <>
+                            <LoaderCircle className="size-4 animate-spin" />
+                            <span>确认中</span>
+                        </>
+                    ) : isRunning ? (
                         <>
                             <LoaderCircle className="size-4 animate-spin" />
                             <Square className="size-3.5 fill-current" />
@@ -175,7 +187,7 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
         audioFormat: node.metadata?.audioFormat || globalConfig.audioFormat || defaultConfig.audioFormat,
         audioSpeed: node.metadata?.audioSpeed || globalConfig.audioSpeed || defaultConfig.audioSpeed,
         audioInstructions: node.metadata?.audioInstructions || globalConfig.audioInstructions || defaultConfig.audioInstructions,
-        count: VISIONARY_HOSTED ? "1" : String(node.metadata?.count || (mode === "image" ? globalConfig.canvasImageCount || globalConfig.count : globalConfig.count) || defaultConfig.count),
+        count: String(node.metadata?.count || (mode === "image" ? globalConfig.canvasImageCount || globalConfig.count : globalConfig.count) || defaultConfig.count),
     };
 }
 

@@ -1,11 +1,13 @@
 import { VISIONARY_HOST_BILLING_EVENT, VISIONARY_HOST_PROTOCOL_VERSION, VISIONARY_HOST_SESSION_INVALID_EVENT, VISIONARY_PARENT_ORIGIN } from "@/constant/visionary-hosted";
 
 import { exchangeVisionaryHostTicket, fetchVisionaryHostBootstrap, VisionaryHostApiError } from "./client";
-import type { VisionaryCanvasConnectMessage, VisionaryCanvasPortMessage, VisionaryCanvasPortReadyMessage, VisionaryCanvasReadyMessage, VisionaryCanvasSessionEstablishedMessage, VisionaryHostBilling, VisionaryHostBootstrap } from "./contracts";
+import type { VisionaryCanvasConnectMessage, VisionaryCanvasNavigateHomeMessage, VisionaryCanvasPortMessage, VisionaryCanvasPortReadyMessage, VisionaryCanvasReadyMessage, VisionaryCanvasSessionEstablishedMessage, VisionaryHostBilling, VisionaryHostBootstrap } from "./contracts";
 
 const CONNECT_TIMEOUT_MS = 15_000;
 const SESSION_REFRESH_LEAD_MS = 2 * 60 * 1000;
 const FALLBACK_REFRESH_MS = 8 * 60 * 1000;
+let activeParentBridge: { port: MessagePort; nonce: string } | null = null;
+let navigateHomeFallbackTimer: number | null = null;
 
 export type VisionaryHostSessionCallbacks = {
     onBootstrap: (bootstrap: VisionaryHostBootstrap) => Promise<void> | void;
@@ -13,9 +15,33 @@ export type VisionaryHostSessionCallbacks = {
     onInvalid: (message: string) => void;
 };
 
+export function requestVisionaryParentHome() {
+    if (!activeParentBridge) return false;
+    const bridge = activeParentBridge;
+    const message: VisionaryCanvasNavigateHomeMessage = {
+        type: "visionary.canvas.navigate-home",
+        protocolVersion: VISIONARY_HOST_PROTOCOL_VERSION,
+        nonce: activeParentBridge.nonce,
+    };
+    bridge.port.postMessage(message);
+    if (navigateHomeFallbackTimer !== null) window.clearTimeout(navigateHomeFallbackTimer);
+    navigateHomeFallbackTimer = window.setTimeout(() => {
+        navigateHomeFallbackTimer = null;
+        if (activeParentBridge !== bridge) return;
+        const destination = new URL("/", VISIONARY_PARENT_ORIGIN).toString();
+        try {
+            if (window.top) window.top.location.href = destination;
+        } catch {
+            window.open(destination, "_top");
+        }
+    }, 1_000);
+    return true;
+}
+
 export async function startVisionaryHostSession(callbacks: VisionaryHostSessionCallbacks) {
     const launch = readLaunchContext();
     const port = await connectToParent(launch.nonce);
+    activeParentBridge = { port, nonce: launch.nonce };
     let refreshTimer: number | null = null;
     let disposed = false;
     let firstTicketSettled = false;
@@ -68,6 +94,9 @@ export async function startVisionaryHostSession(callbacks: VisionaryHostSessionC
         if (refreshTimer !== null) window.clearTimeout(refreshTimer);
         window.removeEventListener(VISIONARY_HOST_BILLING_EVENT, forwardCredits);
         window.removeEventListener(VISIONARY_HOST_SESSION_INVALID_EVENT, forwardSessionInvalid);
+        if (navigateHomeFallbackTimer !== null) window.clearTimeout(navigateHomeFallbackTimer);
+        navigateHomeFallbackTimer = null;
+        if (activeParentBridge?.port === port) activeParentBridge = null;
         port.close();
     };
     const failSession = (reason: string) => {
@@ -88,6 +117,11 @@ export async function startVisionaryHostSession(callbacks: VisionaryHostSessionC
         if (!isVersionedMessage(message, launch.nonce)) return;
         if (message.type === "visionary.canvas.credits.updated") {
             if (typeof message.credits === "number" && Number.isFinite(message.credits)) callbacks.onCredits(message.credits);
+            return;
+        }
+        if (message.type === "visionary.canvas.navigate-home.ack") {
+            if (navigateHomeFallbackTimer !== null) window.clearTimeout(navigateHomeFallbackTimer);
+            navigateHomeFallbackTimer = null;
             return;
         }
         if (message.type === "visionary.canvas.session.invalid") {

@@ -11,6 +11,11 @@ export type AiTextMessage = {
 export type RequestOptions = {
     signal?: AbortSignal;
     hostContext?: VisionaryHostRequestContext;
+    hostAdmissionNodeId?: string;
+    hostAdmissionGroupId?: string;
+    onHostOperationTargetReady?: (context: VisionaryHostRequestContext) => Promise<void>;
+    onHostOperationDurable?: (context: VisionaryHostRequestContext) => Promise<void>;
+    onHostOperationPreflightFailed?: (context: VisionaryHostRequestContext) => Promise<void>;
 };
 
 export async function requestGeneration(config: AiConfig, prompt: string, options?: RequestOptions) {

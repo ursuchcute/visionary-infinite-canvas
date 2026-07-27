@@ -1,7 +1,7 @@
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode, RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Button, Segmented, Switch } from "antd";
-import { ChevronsDown, ChevronsUp, CircleDot, Eraser, Group, Hand, Image as ImageIcon, Info, Music2, Palette, Puzzle, Redo2, Settings2, Square, Trash2, Type, Undo2, Upload, Video } from "lucide-react";
+import { ChevronsDown, ChevronsUp, CircleDot, Eraser, Hand, Image as ImageIcon, Info, Music2, Palette, Puzzle, Redo2, Square, Trash2, Type, Undo2, Upload, Video } from "lucide-react";
 
 import { canvasThemes, type CanvasBackgroundMode, type CanvasTheme } from "@/lib/canvas-theme";
 import { getNodePluginId, listNodeDefinitions, useNodeRegistryVersion } from "@/lib/canvas/node-registry";
@@ -20,8 +20,6 @@ export function CanvasToolbar({
     onAddVideo,
     onAddAudio,
     onAddText,
-    onAddConfig,
-    onAddGroup,
     onAddExtensionNode,
     onUndo,
     onRedo,
@@ -41,8 +39,6 @@ export function CanvasToolbar({
     onAddVideo: () => void;
     onAddAudio: () => void;
     onAddText: () => void;
-    onAddConfig: () => void;
-    onAddGroup: () => void;
     onAddExtensionNode: (type: string) => void;
     onUndo: () => void;
     onRedo: () => void;
@@ -63,12 +59,17 @@ export function CanvasToolbar({
     const [panelX, setPanelX] = useState(0);
     const [extensionsOpen, setExtensionsOpen] = useState(false);
     const [extPanelX, setExtPanelX] = useState(0);
+    const [comingSoonTip, setComingSoonTip] = useState<number | null>(null);
+    const comingSoonTimerRef = useRef<number | null>(null);
     const [toolbarCollapsed, setToolbarCollapsed] = useState(() => typeof window !== "undefined" && localStorage.getItem(TOOLBAR_COLLAPSED_KEY) === "1");
     // 扩展(插件)节点,随注册表变化实时更新
     useNodeRegistryVersion();
     const extensionDefs = listNodeDefinitions().filter((def) => def.showInCreateMenu !== false && getNodePluginId(def.type) !== "builtin");
-    const dockStyle = { background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item, boxShadow: toolbarCollapsed ? "none" : colorTheme === "dark" ? "0 18px 45px rgba(0,0,0,.32)" : "0 16px 40px rgba(28,25,23,.12)" };
+    const dockStyle = toolbarCollapsed
+        ? { background: "#ff6a00", borderColor: "#ff6a00", color: "#ffffff", boxShadow: "none" }
+        : { background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.item, boxShadow: colorTheme === "dark" ? "0 18px 45px rgba(0,0,0,.32)" : "0 16px 40px rgba(28,25,23,.12)" };
     const hoverStyle = { background: theme.toolbar.itemHover, color: theme.toolbar.activeText };
+    const collapsedHoverStyle = { background: "rgba(255,255,255,.16)", color: "#ffffff" };
     const activeStyle = { background: theme.toolbar.activeBg, color: theme.toolbar.activeText };
     const tip = hovered === "tool-toggle" ? (toolbarCollapsed ? "展开工具栏" : "收起工具栏") : hovered ? toolLabel(hovered) : "";
 
@@ -82,6 +83,22 @@ export function CanvasToolbar({
         setAppearanceOpen(false);
         setHovered(null);
     };
+
+    const showComingSoonTip = (event: ReactMouseEvent<HTMLElement>) => {
+        setHovered(null);
+        setComingSoonTip(getTipX(wrapRef.current, event.currentTarget));
+        if (comingSoonTimerRef.current !== null) window.clearTimeout(comingSoonTimerRef.current);
+        comingSoonTimerRef.current = window.setTimeout(() => {
+            setComingSoonTip(null);
+            comingSoonTimerRef.current = null;
+        }, 1600);
+    };
+
+    useEffect(() => {
+        return () => {
+            if (comingSoonTimerRef.current !== null) window.clearTimeout(comingSoonTimerRef.current);
+        };
+    }, []);
 
     // 点击工具栏(含弹出面板)以外的地方,关闭弹出的扩展节点/画布外观面板
     useEffect(() => {
@@ -99,6 +116,16 @@ export function CanvasToolbar({
     return (
         <div ref={rootRef} className={`pointer-events-none absolute left-[196px] right-[196px] z-50 flex justify-center xl:left-[292px] xl:right-[292px] ${toolbarCollapsed ? "bottom-0" : "bottom-2 xl:bottom-5"}`}>
             {tip ? <DockTip label={tip} x={tipX} theme={theme} /> : null}
+            {comingSoonTip !== null ? (
+                <span
+                    className="pointer-events-none absolute bottom-[calc(100%+8px)] z-40 -translate-x-1/2 rounded-md border px-1.5 py-0.5 text-[10px] leading-4 shadow-lg"
+                    style={{ left: comingSoonTip, background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
+                    role="status"
+                    aria-live="polite"
+                >
+                    该功能即将上线
+                </span>
+            ) : null}
             <div
                 ref={wrapRef}
                 className={`thin-scrollbar pointer-events-auto flex items-center overflow-x-auto backdrop-blur [&>*]:shrink-0 ${toolbarCollapsed ? "h-6 w-12 justify-center gap-0 rounded-[3px] border-0 px-0 xl:h-7 xl:w-[60px]" : "h-10 max-w-full gap-0.5 rounded-xl border px-1 shadow-lg xl:h-14 xl:gap-1 xl:px-2"}`}
@@ -122,21 +149,29 @@ export function CanvasToolbar({
                         <ToolbarButton id="tool-image" label="图片" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddImage}>
                             <ImageIcon className="size-4.5" />
                         </ToolbarButton>
-                        {!VISIONARY_HOSTED ? (
-                            <>
-                                <ToolbarButton id="tool-video" label="视频" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddVideo}>
-                                    <Video className="size-4.5" />
-                                </ToolbarButton>
-                                <ToolbarButton id="tool-audio" label="音频" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddAudio}>
-                                    <Music2 className="size-4.5" />
-                                </ToolbarButton>
-                            </>
-                        ) : null}
-                        <ToolbarButton id="tool-config" label="生成配置" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddConfig}>
-                            <Settings2 className="size-4.5" />
+                        <ToolbarButton
+                            id="tool-video"
+                            label="视频"
+                            hovered={hovered}
+                            hoverStyle={hoverStyle}
+                            wrapRef={wrapRef}
+                            onTipX={setTipX}
+                            onHover={setHovered}
+                            onClick={VISIONARY_HOSTED ? showComingSoonTip : onAddVideo}
+                        >
+                            <Video className="size-4.5" />
                         </ToolbarButton>
-                        <ToolbarButton id="tool-group" label="组" hovered={hovered} hoverStyle={hoverStyle} wrapRef={wrapRef} onTipX={setTipX} onHover={setHovered} onClick={onAddGroup}>
-                            <Group className="size-4.5" />
+                        <ToolbarButton
+                            id="tool-audio"
+                            label="音频"
+                            hovered={hovered}
+                            hoverStyle={hoverStyle}
+                            wrapRef={wrapRef}
+                            onTipX={setTipX}
+                            onHover={setHovered}
+                            onClick={VISIONARY_HOSTED ? showComingSoonTip : onAddAudio}
+                        >
+                            <Music2 className="size-4.5" />
                         </ToolbarButton>
                         {extensionDefs.length ? (
                             <ToolbarButton
@@ -199,7 +234,7 @@ export function CanvasToolbar({
                     id="tool-toggle"
                     label={toolbarCollapsed ? "展开工具栏" : "收起工具栏"}
                     hovered={hovered}
-                    hoverStyle={hoverStyle}
+                    hoverStyle={toolbarCollapsed ? collapsedHoverStyle : hoverStyle}
                     wrapRef={wrapRef}
                     onTipX={setTipX}
                     onHover={setHovered}
@@ -365,8 +400,6 @@ function toolLabel(id: string) {
     if (id === "tool-image") return "图片";
     if (id === "tool-video") return "视频";
     if (id === "tool-audio") return "音频";
-    if (id === "tool-config") return "生成配置";
-    if (id === "tool-group") return "组";
     if (id === "tool-extensions") return "扩展节点";
     if (id === "tool-upload") return "上传资产";
     if (id === "tool-style") return "画布外观";

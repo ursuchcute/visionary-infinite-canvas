@@ -1,8 +1,9 @@
 import { defaultConfig, type AiConfig } from "@/stores/use-config-store";
-import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
 import { resolveImageUrl, uploadImage } from "@/services/image-storage";
 import { resolveMediaUrl } from "@/services/file-storage";
 import { imageMetadata, referenceUrl } from "@/lib/canvas/canvas-node-factory";
+import { normalizeCanvasImageGenerationCount } from "@/lib/canvas/canvas-generation-limits";
+import { resolveCanvasImageAspectRatios, resolveCanvasImageParameters, resolveCanvasImageRequestResolution, resolveCanvasImageSize, shouldHideCanvasImageQuality, shouldUseStandardCanvasImageResolution } from "@/components/canvas/canvas-image-parameter-controls";
 import type { NodeGenerationInput } from "@/components/canvas/canvas-node-generation";
 import type { CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-prompt-panel";
 import type { CanvasImageAngleParams } from "@/components/canvas/canvas-node-angle-dialog";
@@ -78,8 +79,7 @@ export async function hydrateAssistantImages(sessions: CanvasAssistantSession[])
 }
 
 export function getGenerationCount(count: string) {
-    if (VISIONARY_HOSTED) return 1;
-    return Math.max(1, Math.min(9, Math.floor(Math.abs(Number(count)) || 1)));
+    return normalizeCanvasImageGenerationCount(count);
 }
 
 export function getInputSummary(inputs: NodeGenerationInput[]) {
@@ -93,13 +93,20 @@ export function getInputSummary(inputs: NodeGenerationInput[]) {
 
 export function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | undefined, mode: CanvasNodeGenerationMode): AiConfig {
     const defaultModel = mode === "image" ? config.imageModel : mode === "video" ? config.videoModel : mode === "audio" ? config.audioModel : config.textModel;
+    const model = node?.metadata?.model || defaultModel || (mode === "audio" ? defaultConfig.audioModel : config.model || defaultConfig.model);
+    const quality = node?.metadata?.quality || (mode === "image" ? "auto" : config.quality || defaultConfig.quality);
+    const ratioOptions = mode === "image" ? resolveCanvasImageAspectRatios(config, model) : [];
+    const resolvedImageParameters = mode === "image" ? resolveCanvasImageParameters(node?.metadata, ratioOptions) : null;
+    const displayedImageResolution = resolvedImageParameters && shouldUseStandardCanvasImageResolution(model) ? "standard" : resolvedImageParameters?.resolution;
+    const imageResolution = displayedImageResolution ? resolveCanvasImageRequestResolution(config, model, displayedImageResolution) : undefined;
+    const imageRatio = resolvedImageParameters?.ratio;
     return {
         ...config,
-        model: node?.metadata?.model || defaultModel || (mode === "audio" ? defaultConfig.audioModel : config.model || defaultConfig.model),
-        quality: node?.metadata?.quality || (mode === "image" ? "auto" : config.quality || defaultConfig.quality),
-        size: node?.metadata?.size || (mode === "image" ? "1:1" : config.size || defaultConfig.size),
-        imageResolution: node?.metadata?.imageResolution,
-        imageAspectRatio: node?.metadata?.imageAspectRatio,
+        model,
+        quality: mode === "image" && shouldHideCanvasImageQuality(model, node?.metadata) ? "auto" : quality,
+        size: mode === "image" && imageResolution && imageRatio ? resolveCanvasImageSize(imageResolution, imageRatio) : node?.metadata?.size || (mode === "image" ? "1:1" : config.size || defaultConfig.size),
+        imageResolution: imageResolution || node?.metadata?.imageResolution,
+        imageAspectRatio: imageRatio || node?.metadata?.imageAspectRatio,
         background: node?.metadata?.background ?? config.background ?? defaultConfig.background,
         videoSeconds: node?.metadata?.seconds || config.videoSeconds || defaultConfig.videoSeconds,
         vquality: node?.metadata?.vquality || config.vquality || defaultConfig.vquality,
@@ -109,12 +116,18 @@ export function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | u
         audioFormat: node?.metadata?.audioFormat || config.audioFormat || defaultConfig.audioFormat,
         audioSpeed: node?.metadata?.audioSpeed || config.audioSpeed || defaultConfig.audioSpeed,
         audioInstructions: node?.metadata?.audioInstructions || config.audioInstructions || defaultConfig.audioInstructions,
-        count: VISIONARY_HOSTED ? "1" : String(node?.metadata?.count || (mode === "image" ? config.canvasImageCount || config.count : config.count) || defaultConfig.count),
+        count: String(node?.metadata?.count || (mode === "image" ? config.canvasImageCount || config.count : config.count) || defaultConfig.count),
     };
 }
 
 export function resetInterruptedGeneration(nodes: CanvasNodeData[]) {
-    return nodes.map((node) => (node.metadata?.status === "loading" ? { ...node, metadata: { ...node.metadata, status: "error" as const, errorDetails: "页面刷新后生成已中断，请重新生成。" } } : node));
+    return nodes.map((node) =>
+        node.metadata?.status === "loading"
+            ? node.metadata.hostOperationId || node.metadata.batchChildIds?.some((childId) => nodes.find((item) => item.id === childId)?.metadata?.hostOperationId)
+                ? { ...node, metadata: { ...node.metadata, status: "loading" as const, errorDetails: "正在确认服务端任务状态，请勿重复生成。" } }
+                : { ...node, metadata: { ...node.metadata, status: "error" as const, errorDetails: "页面刷新后生成已中断，请重新生成。" } }
+            : node,
+    );
 }
 
 export function isGenerationCanceled(error: unknown) {

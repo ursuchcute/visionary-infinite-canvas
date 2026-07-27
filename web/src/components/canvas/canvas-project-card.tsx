@@ -1,16 +1,22 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Check, Download, Maximize2, Pencil, Trash2, X } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Button, Input } from "antd";
+import { App, Button, Input } from "antd";
 
-import { useCanvasStore, type CanvasProject } from "@/stores/canvas/use-canvas-store";
+import { flushCanvasStorePersistence, useCanvasStore, type CanvasProject } from "@/stores/canvas/use-canvas-store";
 import { useCanvasUiStore } from "@/stores/canvas/use-canvas-ui-store";
 import { CanvasProjectCover } from "@/components/canvas/canvas-project-cover";
 import { getCanvasProjectCoverSource } from "@/lib/canvas/canvas-project-cover";
+import {
+    CanvasProjectInUseError,
+    CanvasProjectLockUnsupportedError,
+    withHostedCanvasStoreLock,
+} from "@/lib/canvas/canvas-project-lock";
 import { APP_SHORT_NAME } from "@/constant/env";
 import { cn } from "@/lib/utils";
 
 export function CanvasProjectCard({ project }: { project: CanvasProject }) {
+    const { message } = App.useApp();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const renameProject = useCanvasStore((state) => state.renameProject);
@@ -24,11 +30,41 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
     const setDeleteIds = useCanvasUiStore((state) => state.setDeleteProjectIds);
     const editing = editingId === project.id;
     const selected = selectedIds.includes(project.id);
+    const [savingTitle, setSavingTitle] = useState(false);
     const projectCoverSource = useMemo(() => getCanvasProjectCoverSource(project), [project]);
     const open = () => navigate(`/canvas/${project.id}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`);
-    const saveTitle = () => {
-        renameProject(project.id, editingTitle);
-        stopEditing();
+    const saveTitle = async () => {
+        if (savingTitle) return;
+        setSavingTitle(true);
+        try {
+            await withHostedCanvasStoreLock(async () => {
+                const previousProjects = useCanvasStore.getState().projects;
+                if (!previousProjects.some((item) => item.id === project.id)) {
+                    throw new Error("PROJECT_NOT_FOUND");
+                }
+                try {
+                    renameProject(project.id, editingTitle);
+                    await flushCanvasStorePersistence();
+                } catch (error) {
+                    useCanvasStore.setState({ projects: previousProjects });
+                    throw error;
+                }
+                stopEditing();
+            });
+        } catch (error) {
+            if (error instanceof CanvasProjectInUseError) {
+                message.warning("另一个页面正在使用画布，请先关闭后再重命名。");
+            } else if (error instanceof CanvasProjectLockUnsupportedError) {
+                message.error("当前浏览器不支持安全画布锁，请升级浏览器后再重命名。");
+            } else if (error instanceof Error && error.message === "PROJECT_NOT_FOUND") {
+                stopEditing();
+                message.warning("该画布已在其他页面删除，列表已刷新。");
+            } else {
+                message.error("重命名失败，请稍后重试。");
+            }
+        } finally {
+            setSavingTitle(false);
+        }
     };
     const exportProject = async () => {
         const { exportCanvasProjects } = await import("@/lib/canvas/canvas-export");
@@ -76,7 +112,7 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
             <div className="p-5">
                 <div className="flex min-w-0 items-start gap-3">
                     {editing ? (
-                        <Input className="min-w-0" value={editingTitle} onClick={(event) => event.stopPropagation()} onChange={(event) => setEditingTitle(event.target.value)} onKeyDown={(event) => event.key === "Enter" && saveTitle()} autoFocus />
+                        <Input className="min-w-0" value={editingTitle} disabled={savingTitle} onClick={(event) => event.stopPropagation()} onChange={(event) => setEditingTitle(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void saveTitle()} autoFocus />
                     ) : (
                         <button
                             type="button"
@@ -98,8 +134,8 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
                     <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
                         {editing ? (
                             <>
-                                <Button type="text" size="small" className="!size-8 !min-w-8 !rounded-xl" icon={<Check className="size-4" />} onClick={saveTitle} aria-label="保存名称" />
-                                <Button type="text" size="small" className="!size-8 !min-w-8 !rounded-xl" icon={<X className="size-4" />} onClick={stopEditing} aria-label="取消重命名" />
+                                <Button type="text" size="small" loading={savingTitle} className="!size-8 !min-w-8 !rounded-xl" icon={<Check className="size-4" />} onClick={() => void saveTitle()} aria-label="保存名称" />
+                                <Button type="text" size="small" disabled={savingTitle} className="!size-8 !min-w-8 !rounded-xl" icon={<X className="size-4" />} onClick={stopEditing} aria-label="取消重命名" />
                             </>
                         ) : (
                             <>
