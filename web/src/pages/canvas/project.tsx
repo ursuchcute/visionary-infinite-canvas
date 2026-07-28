@@ -21,6 +21,7 @@ import { fitNodeSize, nodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
 import { App, Button, Modal } from "antd";
 import { NODE_DEFAULT_SIZE, getNodeSpec } from "@/constant/canvas";
 import { CanvasConnectionLayer } from "@/components/canvas/canvas-connection-layer";
+import { CanvasEmptyHint } from "@/components/canvas/canvas-empty-hint";
 import { CanvasGraphLayer } from "@/components/canvas/canvas-graph-layer";
 import { CanvasConfigComposer } from "@/components/canvas/canvas-config-composer";
 import { CanvasConfigNodePanel } from "@/components/canvas/canvas-config-node-panel";
@@ -45,6 +46,7 @@ import { useAgentStore } from "@/stores/use-agent-store";
 import { flushCanvasStorePersistence, useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useCanvasInteractionStore, type CanvasNodePreview } from "@/stores/canvas/use-canvas-interaction-store";
 import { useCanvasViewportStore } from "@/stores/canvas/use-canvas-viewport-store";
+import { getCanvasTaskDefaults, rememberCanvasTaskDefaults } from "@/stores/use-canvas-task-defaults-store";
 import { useAgentBridge } from "@/pages/canvas/hooks/use-agent-bridge";
 import { useCanvasIndexes } from "@/pages/canvas/hooks/use-canvas-indexes";
 import { usePluginHost } from "@/pages/canvas/hooks/use-plugin-host";
@@ -632,17 +634,18 @@ function InfiniteCanvasPage() {
                                     } else {
                                         const children = root.metadata.batchChildIds.map((id) => next.find((node) => node.id === id)).filter((node): node is CanvasNodeData => Boolean(node));
                                         const rootStatus = resolveHostedBatchStatus(children);
-                                        const withRootStatus = next.map((node): CanvasNodeData =>
-                                            node.id === rootId
-                                                ? {
-                                                      ...node,
-                                                      metadata: {
-                                                          ...node.metadata,
-                                                          status: rootStatus,
-                                                          errorDetails: rootStatus === NODE_STATUS_ERROR ? "全部已提交图片生成失败" : undefined,
-                                                      },
-                                                  }
-                                                : node,
+                                        const withRootStatus = next.map(
+                                            (node): CanvasNodeData =>
+                                                node.id === rootId
+                                                    ? {
+                                                          ...node,
+                                                          metadata: {
+                                                              ...node.metadata,
+                                                              status: rootStatus,
+                                                              errorDetails: rootStatus === NODE_STATUS_ERROR ? "全部已提交图片生成失败" : undefined,
+                                                          },
+                                                      }
+                                                    : node,
                                         );
                                         deliveredNodes = syncConnectedConfigStatus(withRootStatus, connectionsRef.current, rootId);
                                     }
@@ -1305,7 +1308,10 @@ function InfiniteCanvasPage() {
 
     const createConnectedNode = useCallback(
         (type: CanvasNodeType.Image | CanvasNodeType.Text | CanvasNodeType.Config | CanvasNodeType.Video | CanvasNodeType.Audio, pending: PendingConnectionCreate) => {
-            const metadata = type === CanvasNodeType.Config ? { model: effectiveConfig.imageModel || effectiveConfig.model, size: effectiveConfig.size, count: getGenerationCount(effectiveConfig.canvasImageCount || effectiveConfig.count) } : undefined;
+            const metadata =
+                type === CanvasNodeType.Config
+                    ? { model: effectiveConfig.imageModel || effectiveConfig.model, size: effectiveConfig.size, count: getGenerationCount(effectiveConfig.canvasImageCount || effectiveConfig.count) }
+                    : getCanvasTaskDefaults(type);
             const createdNode = createCanvasNode(type, pending.position, metadata);
             const sourceNode = nodesRef.current.find((node) => node.id === pending.connection.nodeId);
             const newNode =
@@ -1490,7 +1496,7 @@ function InfiniteCanvasPage() {
                           size: effectiveConfig.size,
                           count: getGenerationCount(effectiveConfig.canvasImageCount || effectiveConfig.count),
                       }
-                    : undefined;
+                    : getCanvasTaskDefaults(type);
             const newNode = createCanvasNode(type, targetPosition, configMetadata);
 
             setNodes((prev) => [...prev, newNode]);
@@ -2489,6 +2495,8 @@ function InfiniteCanvasPage() {
     }, []);
 
     const handleConfigNodeChange = useCallback((nodeId: string, patch: Partial<CanvasNodeData["metadata"]>) => {
+        const currentNode = nodesRef.current.find((node) => node.id === nodeId);
+        if (currentNode) rememberCanvasTaskDefaults(currentNode.type, { ...currentNode.metadata, ...patch });
         setNodes((prev) => prev.map((node) => (node.id === nodeId ? applyNodeConfigPatch(node, patch) : node)));
     }, []);
 
@@ -3980,6 +3988,8 @@ function InfiniteCanvasPage() {
                         />
                     ) : null}
                 </InfiniteCanvas>
+
+                {nodes.length === 0 ? <CanvasEmptyHint /> : null}
 
                 {!connectingParams && panelNode && panelNode.type !== CanvasNodeType.Group && !getNodeDefinition(panelNode.type)?.hidePanel ? (
                     <CanvasNodePanelOverlay node={panelNode} className={`thin-scrollbar absolute z-[70] -translate-x-1/2 pt-4 ${panelNode.type === CanvasNodeType.Image ? "w-[800px]" : panelNode.type === CanvasNodeType.Text ? "w-[640px]" : "w-[600px]"}`}>

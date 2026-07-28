@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUp, Image as ImageIcon, LoaderCircle, Square, X } from "lucide-react";
+import { ArrowUp, LoaderCircle, Square } from "lucide-react";
 import { Button } from "antd";
 import { useParams } from "react-router-dom";
 
@@ -24,6 +24,7 @@ import { CanvasNodeType, type CanvasGenerationMode, type CanvasNodeData, type Ca
 import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
 import { useVisionaryImageQuote } from "@/hooks/use-visionary-image-quote";
+import { CanvasImageReferenceAttachments } from "@/components/canvas/canvas-image-reference-attachments";
 
 export type CanvasNodeGenerationMode = CanvasGenerationMode;
 
@@ -128,7 +129,7 @@ export function CanvasNodePromptPanel({ node, isRunning, isConfirming = false, o
             onPointerDown={(event) => event.stopPropagation()}
             onWheel={(event) => event.stopPropagation()}
         >
-            <ImageReferenceAttachments targetNodeId={node.id} references={attachedImageReferences} theme={theme} onRemove={(reference) => onReferenceRemove?.(node.id, reference)} />
+            <CanvasImageReferenceAttachments targetNodeId={node.id} references={attachedImageReferences} theme={theme} onRemove={(reference) => onReferenceRemove?.(node.id, reference)} />
             <CanvasPromptChipInput
                 value={prompt}
                 references={mentionReferences}
@@ -259,59 +260,6 @@ function promptPlaceholder(mode: CanvasNodeGenerationMode, hasTextContent: boole
     if (mode === "audio") return "描述要生成的音频内容";
     if (mode === "image") return "可按 @ 引用素材，描述任何你想要生成的内容，";
     return hasTextContent ? "请输入你想要将本段文本修改成什么" : "请输入你想要生成的文本内容";
-}
-
-function ImageReferenceAttachments({
-    targetNodeId,
-    references,
-    theme,
-    onRemove,
-}: {
-    targetNodeId: string;
-    references: CanvasResourceReference[];
-    theme: (typeof canvasThemes)[keyof typeof canvasThemes];
-    onRemove: (reference: CanvasResourceReference) => void;
-}) {
-    if (!references.length) return null;
-    return (
-        <div data-canvas-image-reference-strip className="mb-2 flex min-h-14 flex-wrap items-center gap-2 px-1">
-            {references.map((reference) => (
-                <div key={reference.nodeId} className="group relative">
-                    {reference.previewUrl ? (
-                        <div
-                            className="pointer-events-none absolute bottom-[calc(100%+10px)] left-0 z-[1400] w-72 translate-y-1 overflow-hidden rounded-2xl border opacity-0 shadow-2xl transition duration-150 group-hover:translate-y-0 group-hover:opacity-100"
-                            style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border }}
-                        >
-                            <img src={reference.previewUrl} alt="" className="h-44 w-full object-cover" />
-                            <div className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-8 text-sm font-semibold text-white">@{reference.title || reference.label}</div>
-                        </div>
-                    ) : null}
-                    <div className="relative grid size-14 place-items-center overflow-hidden rounded-xl border" style={{ background: theme.node.fill, borderColor: theme.node.stroke }}>
-                        {reference.previewUrl ? <img src={reference.previewUrl} alt={reference.title} className="h-full w-full object-cover" /> : <ImageIcon className="size-5 opacity-45" />}
-                        {reference.nodeId !== targetNodeId ? (
-                            <button
-                                type="button"
-                                className="absolute right-0.5 top-0.5 grid size-5 place-items-center rounded-full bg-black/75 text-white opacity-0 transition hover:bg-black group-hover:opacity-100"
-                                aria-label={`移除参考图 ${reference.title || reference.label}`}
-                                title="移除参考图并断开连线"
-                                onPointerDown={(event) => {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                }}
-                                onClick={(event) => {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    onRemove(reference);
-                                }}
-                            >
-                                <X className="size-3.5" />
-                            </button>
-                        ) : null}
-                    </div>
-                </div>
-            ))}
-        </div>
-    );
 }
 
 function videoConfigPatch(key: keyof AiConfig, value: string) {

@@ -8,6 +8,7 @@ const readSource = (relativePath) => readFileSync(path.join(webRoot, relativePat
 const project = readSource("src/pages/canvas/project.tsx");
 const references = readSource("src/lib/canvas/canvas-resource-references.ts");
 const promptPanel = readSource("src/components/canvas/canvas-node-prompt-panel.tsx");
+const imageReferenceAttachments = readSource("src/components/canvas/canvas-image-reference-attachments.tsx");
 const generation = readSource("src/components/canvas/canvas-node-generation.ts");
 const graphLayer = readSource("src/components/canvas/canvas-graph-layer.tsx");
 const connectionLayer = readSource("src/components/canvas/canvas-connection-layer.tsx");
@@ -23,10 +24,10 @@ assert.match(project, /setConnections\(\(prev\) => \[\.\.\.prev, nextConnection\
 
 assert.match(promptPanel, /const mentionReferenceSignature = useMemo/);
 assert.match(promptPanel, /\[mentionReferenceSignature, node\.id\]/);
-assert.match(promptPanel, /data-canvas-image-reference-strip/);
-assert.match(promptPanel, /移除参考图并断开连线/);
-assert.match(promptPanel, /group-hover:opacity-100/);
-assert.match(promptPanel, /reference\.nodeId !== targetNodeId/);
+assert.match(imageReferenceAttachments, /data-canvas-image-reference-strip/);
+assert.match(imageReferenceAttachments, /移除参考图并断开连线/);
+assert.match(imageReferenceAttachments, /group-hover:opacity-100/);
+assert.match(imageReferenceAttachments, /reference\.nodeId !== targetNodeId/);
 assert.match(promptPanel, /onReferenceRemove\?\.\(node\.id, reference\)/);
 assert.match(project, /const removePromptReference = useCallback/);
 assert.match(project, /const connectedConfigId = currentConnections\.find/);

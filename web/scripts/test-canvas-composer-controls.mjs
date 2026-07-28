@@ -24,6 +24,9 @@ const hostSession = readSource("src/services/api/visionary-host/session.ts");
 const imageStorage = readSource("src/services/image-storage.ts");
 const imageToolbarTools = readSource("src/components/canvas/canvas-image-toolbar-tools.tsx");
 const generationLimits = readSource("src/lib/canvas/canvas-generation-limits.ts");
+const emptyHint = readSource("src/components/canvas/canvas-empty-hint.tsx");
+const imageReferenceAttachments = readSource("src/components/canvas/canvas-image-reference-attachments.tsx");
+const taskDefaultsStore = readSource("src/stores/use-canvas-task-defaults-store.ts");
 
 assert.match(parameters, /aria-label="设置图片生成数量"/);
 assert.doesNotMatch(parameters, /Hosted 首发每次生成 1 张/);
@@ -117,5 +120,18 @@ assert.match(imageStorage, /input\.startsWith\("data:"\)/);
 assert.doesNotMatch(imageStorage, /typeof input === "string" \? await \(await fetch\(input\)\)\.blob\(\)/);
 assert.match(imageToolbarTools, /!\["resize", "upscale"\]\.includes\(tool\.id\)/);
 assert.doesNotMatch(promptPanel, /stripImageReferenceLabels/);
+assert.match(emptyHint, /data-canvas-empty-hint/);
+assert.match(emptyHint, /双击/);
+assert.match(emptyHint, /画布自由生成/);
+assert.match(project, /nodes\.length === 0 \? <CanvasEmptyHint \/> : null/);
+assert.match(imageReferenceAttachments, /createPortal\(/);
+assert.match(imageReferenceAttachments, /data-canvas-reference-preview/);
+assert.match(imageReferenceAttachments, /pointer-events-none fixed z-\[5000\]/);
+assert.doesNotMatch(promptPanel, /group-hover:translate-y-0 group-hover:opacity-100/);
+assert.match(taskDefaultsStore, /infinite-canvas:task-defaults/);
+assert.match(taskDefaultsStore, /type === CanvasNodeType\.Text/);
+assert.match(taskDefaultsStore, /type !== CanvasNodeType\.Image/);
+assert.match(project, /getCanvasTaskDefaults\(type\)/);
+assert.match(project, /rememberCanvasTaskDefaults\(currentNode\.type, \{ \.\.\.currentNode\.metadata, \.\.\.patch \}\)/);
 
 console.log("Canvas composer controls contract passed.");
