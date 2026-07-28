@@ -68,6 +68,9 @@ if (expectedRevision && (!/^[a-f0-9]{40}$/i.test(expectedRevision) || readBuildM
     fail("Hosted build does not contain the exact requested source revision.");
 }
 const expectedVersion = String(process.env.VITE_VISIONARY_RELEASE_VERSION || "").trim();
+if (!readBuildMetadata("visionary-release-version")) {
+    fail("Hosted build is missing a non-empty release version.");
+}
 if (expectedVersion && readBuildMetadata("visionary-release-version") !== expectedVersion) {
     fail("Hosted build does not contain the requested release version.");
 }

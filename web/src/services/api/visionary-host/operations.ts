@@ -12,6 +12,7 @@ export type VisionaryHostOperationRecord = VisionaryHostRequestContext & {
     status: "preflight" | "submitting" | "pending" | "completed" | "failed";
     generationId?: string;
     imageUrl?: string;
+    localDeliveryCompletedAt?: number;
     error?: string;
     billing?: VisionaryHostBilling;
     notFoundCount?: number;

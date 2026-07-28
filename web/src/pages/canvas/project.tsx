@@ -47,6 +47,7 @@ import { flushCanvasStorePersistence, useCanvasStore } from "@/stores/canvas/use
 import { useCanvasInteractionStore, type CanvasNodePreview } from "@/stores/canvas/use-canvas-interaction-store";
 import { useCanvasViewportStore } from "@/stores/canvas/use-canvas-viewport-store";
 import { getCanvasTaskDefaults, rememberCanvasTaskDefaults } from "@/stores/use-canvas-task-defaults-store";
+import { useVisionaryHostStore } from "@/stores/use-visionary-host-store";
 import { useAgentBridge } from "@/pages/canvas/hooks/use-agent-bridge";
 import { useCanvasIndexes } from "@/pages/canvas/hooks/use-canvas-indexes";
 import { usePluginHost } from "@/pages/canvas/hooks/use-plugin-host";
@@ -316,6 +317,7 @@ function InfiniteCanvasPage() {
     const openProject = useCanvasStore((state) => state.openProject);
     const updateProject = useCanvasStore((state) => state.updateProject);
     const currentProject = useCanvasStore((state) => state.projects.find((project) => project.id === projectId));
+    const imageDeliveryAckEnabled = useVisionaryHostStore((state) => state.bootstrap?.features.imageDeliveryAck === true);
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const [nodes, setNodes] = useState<CanvasNodeData[]>([]);
     const [connections, setConnections] = useState<CanvasConnection[]>([]);
@@ -775,6 +777,7 @@ function InfiniteCanvasPage() {
                         setNodes((prev) => restoreActiveHostedOperationGuards(prev, records));
                         setHostRecoveryScans((current) => (current.projectId === projectId ? { ...current, image: true } : current));
                     },
+                    imageDeliveryAckEnabled,
                 );
                 consecutiveFailures = result.deliveryFailures ? Math.min(consecutiveFailures + 1, 4) : 0;
             } catch (error) {
@@ -791,7 +794,7 @@ function InfiniteCanvasPage() {
             controller.abort();
             if (timer !== null) window.clearTimeout(timer);
         };
-    }, [hostProjectLeaseOwned, message, persistHostedRecoveryNodes, projectId, projectLoaded]);
+    }, [hostProjectLeaseOwned, imageDeliveryAckEnabled, message, persistHostedRecoveryNodes, projectId, projectLoaded]);
 
     useEffect(() => {
         if (!VISIONARY_HOSTED || !hostProjectLeaseOwned || !projectLoaded || !projectId) return;

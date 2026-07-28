@@ -1,6 +1,7 @@
 export type VisionaryHostFeatureFlags = {
     image: boolean;
     text: boolean;
+    imageDeliveryAck?: boolean;
 };
 
 export type VisionaryHostUser = {
@@ -57,6 +58,7 @@ export type VisionaryHostRequestContext = {
 };
 
 export type VisionaryHostImageRequest = VisionaryHostRequestContext & {
+    clientReleaseVersion?: string;
     prompt: string;
     model: string;
     ratio: string;
@@ -109,6 +111,21 @@ export type VisionaryHostImageRecoveryResponse = {
     retryAfterSeconds?: number;
     results: VisionaryHostImageRecoveryResult[];
     credits?: number;
+};
+
+export type VisionaryHostImageDeliveryAckRequest = {
+    clientOperationId: string;
+    generationId: string;
+    clientReleaseVersion: string;
+};
+
+export type VisionaryHostImageDeliveryAckResponse = {
+    success: true;
+    data: {
+        clientDeliveredAt: string;
+        clientReleaseVersion: string | null;
+        firstAcknowledgement: boolean;
+    };
 };
 
 export type VisionaryHostTextCapabilities = {

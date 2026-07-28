@@ -2,7 +2,13 @@ import localforage from "localforage";
 
 import { getImageBlob, resolveImageUrl } from "@/services/image-storage";
 import type { ReferenceImage } from "@/types/image";
-import { VISIONARY_HOST_BILLING_EVENT, VISIONARY_HOST_PROTOCOL_VERSION, VISIONARY_HOST_SESSION_INVALID_EVENT, normalizeHostedModel } from "@/constant/visionary-hosted";
+import {
+    VISIONARY_HOST_BILLING_EVENT,
+    VISIONARY_HOST_PROTOCOL_VERSION,
+    VISIONARY_HOST_SESSION_INVALID_EVENT,
+    VISIONARY_RELEASE_VERSION,
+    normalizeHostedModel,
+} from "@/constant/visionary-hosted";
 import { prepareReferenceImageForUpload } from "@/lib/reference-image-compression";
 
 import {
@@ -24,6 +30,8 @@ import type {
     VisionaryHostBilling,
     VisionaryHostBootstrap,
     VisionaryHostExchangeResponse,
+    VisionaryHostImageDeliveryAckRequest,
+    VisionaryHostImageDeliveryAckResponse,
     VisionaryHostImageQuote,
     VisionaryHostImageRecoveryResponse,
     VisionaryHostImageRequest,
@@ -44,6 +52,7 @@ const MAX_HOST_REFERENCE_TOTAL_BYTES = 30 * 1024 * 1024;
 // one noisy browser cannot turn recovery into an unbounded database query.
 export const HOST_IMAGE_RECOVERY_BATCH_LIMIT = 6;
 const HOST_OPERATION_PREFLIGHT_GRACE_MS = 2 * 60_000;
+const HOST_IMAGE_DELIVERY_ACK_TIMEOUT_MS = 10_000;
 const preparedReferenceBlobs = new WeakMap<ReferenceImage, Map<number, Promise<Blob>>>();
 const textConversationStore = localforage.createInstance({
     name: "infinite-canvas",
@@ -274,6 +283,7 @@ export async function recoverStoredVisionaryHostImages(
     onTerminal: (record: VisionaryHostOperationRecord) => Promise<boolean> | boolean,
     signal?: AbortSignal,
     onActive?: (records: VisionaryHostOperationRecord[]) => Promise<void> | void,
+    imageDeliveryAckEnabled = false,
 ) {
     const records = await listHostOperations(projectId);
     throwIfAborted(signal);
@@ -285,16 +295,11 @@ export async function recoverStoredVisionaryHostImages(
         const failed = { ...record, status: "failed" as const, error: "图片请求在服务端提交前已中断，未扣除积分。" };
         await updateHostOperation(record.clientOperationId, { status: failed.status, error: failed.error });
         attemptedTerminalIds.add(record.clientOperationId);
-        if (await onTerminal(failed)) await acknowledgeHostOperation(record.clientOperationId);
-        else deliveryFailures += 1;
+        if (!(await finalizeRecoveredVisionaryHostImage(failed, onTerminal, imageDeliveryAckEnabled, signal))) deliveryFailures += 1;
     }
     for (const record of records.filter((item) => item.status === "completed" || item.status === "failed")) {
         attemptedTerminalIds.add(record.clientOperationId);
-        if (await onTerminal(record)) {
-            await acknowledgeHostOperation(record.clientOperationId);
-        } else {
-            deliveryFailures += 1;
-        }
+        if (!(await finalizeRecoveredVisionaryHostImage(record, onTerminal, imageDeliveryAckEnabled, signal))) deliveryFailures += 1;
     }
 
     const active = records.filter((record) => record.status === "submitting" || record.status === "pending");
@@ -342,16 +347,69 @@ export async function recoverStoredVisionaryHostImages(
     // Deliver terminal records produced by this recovery pass immediately.
     const refreshed = await listHostOperations(projectId);
     for (const record of refreshed.filter((item) => !attemptedTerminalIds.has(item.clientOperationId) && (item.status === "completed" || item.status === "failed"))) {
-        if (await onTerminal(record)) {
-            await acknowledgeHostOperation(record.clientOperationId);
-        } else {
-            deliveryFailures += 1;
-        }
+        if (!(await finalizeRecoveredVisionaryHostImage(record, onTerminal, imageDeliveryAckEnabled, signal))) deliveryFailures += 1;
     }
     return {
         activeCount: refreshed.filter((record) => record.status === "preflight" || record.status === "submitting" || record.status === "pending").length,
         deliveryFailures,
     };
+}
+
+async function finalizeRecoveredVisionaryHostImage(
+    record: VisionaryHostOperationRecord,
+    onTerminal: (record: VisionaryHostOperationRecord) => Promise<boolean> | boolean,
+    imageDeliveryAckEnabled: boolean,
+    signal?: AbortSignal,
+) {
+    let locallyDelivered = Boolean(record.localDeliveryCompletedAt);
+    if (!locallyDelivered) {
+        if (!(await onTerminal(record))) return false;
+        if (record.status === "completed" && imageDeliveryAckEnabled) {
+            const localDeliveryCompletedAt = Date.now();
+            if (!(await updateHostOperation(record.clientOperationId, { localDeliveryCompletedAt }))) return false;
+            record = { ...record, localDeliveryCompletedAt };
+            locallyDelivered = true;
+        }
+    }
+    if (record.status === "completed" && imageDeliveryAckEnabled) {
+        if (!record.generationId) return false;
+        try {
+            const request: VisionaryHostImageDeliveryAckRequest = {
+                clientOperationId: record.clientOperationId,
+                generationId: record.generationId,
+                clientReleaseVersion: VISIONARY_RELEASE_VERSION,
+            };
+            await withHostDeliveryAckTimeout(signal, (ackSignal) =>
+                hostJson<VisionaryHostImageDeliveryAckResponse>("/images/delivery-ack", {
+                    method: "POST",
+                    body: JSON.stringify(request),
+                    signal: ackSignal,
+                }),
+            );
+        } catch (error) {
+            if (signal?.aborted && isAbortError(error)) throw error;
+            return false;
+        }
+    }
+    await acknowledgeHostOperation(record.clientOperationId);
+    return true;
+}
+
+async function withHostDeliveryAckTimeout<T>(
+    parentSignal: AbortSignal | undefined,
+    run: (signal: AbortSignal) => Promise<T>,
+) {
+    throwIfAborted(parentSignal);
+    const controller = new AbortController();
+    const abortFromParent = () => controller.abort();
+    parentSignal?.addEventListener("abort", abortFromParent, { once: true });
+    const timeout = setTimeout(() => controller.abort(), HOST_IMAGE_DELIVERY_ACK_TIMEOUT_MS);
+    try {
+        return await run(controller.signal);
+    } finally {
+        clearTimeout(timeout);
+        parentSignal?.removeEventListener("abort", abortFromParent);
+    }
 }
 
 export async function requestVisionaryHostText(context: VisionaryHostRequestContext, content: string, model: string, onDelta: (text: string) => void, options?: HostOperationRequestOptions) {
@@ -605,6 +663,7 @@ async function recordCompletedImage(response: VisionaryHostImageResponse) {
 function buildImageRequest(context: VisionaryHostRequestContext, prompt: string, parameters: HostImageParameters): VisionaryHostImageRequest {
     return {
         ...context,
+        ...(VISIONARY_RELEASE_VERSION ? { clientReleaseVersion: VISIONARY_RELEASE_VERSION } : {}),
         prompt,
         model: normalizeHostedModel(parameters.model),
         ratio: normalizeRatio(parameters.ratio),
