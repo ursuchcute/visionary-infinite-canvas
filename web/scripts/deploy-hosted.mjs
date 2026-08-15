@@ -256,7 +256,15 @@ function switchToPreviousRelease() {
 
 function readRemoteReleaseState() {
     const output = remoteText(
-        ["set -eu", `current=${shQuote(config.currentPath)}`, 'active=$(readlink -f "$current" 2>/dev/null || true)', 'previous=$(readlink -f "$current.previous" 2>/dev/null || true)', 'printf "active=%s\\nprevious=%s\\n" "$active" "$previous"'].join(
+        [
+            "set -eu",
+            `current=${shQuote(config.currentPath)}`,
+            'active=""',
+            'previous=""',
+            'if [ -L "$current" ]; then active=$(readlink -e "$current"); elif [ -e "$current" ]; then echo "Canvas current path exists but is not a symlink: $current" >&2; exit 1; fi',
+            'if [ -L "$current.previous" ]; then previous=$(readlink -e "$current.previous"); elif [ -e "$current.previous" ]; then echo "Canvas previous path exists but is not a symlink: $current.previous" >&2; exit 1; fi',
+            'printf "active=%s\\nprevious=%s\\n" "$active" "$previous"',
+        ].join(
             "\n",
         ),
     );

@@ -298,6 +298,9 @@ assert.match(deployScript, /publicManifest\.version !== expectedManifest\.versio
 assert.match(deployScript, /publicManifest\.revision !== expectedManifest\.revision/);
 assert.match(deployScript, /hostedBuildMetadataVersion\(publicManifest\) !== hostedBuildMetadataVersion\(expectedManifest\)/);
 assert.match(deployScript, /const originalState = readRemoteReleaseState\(\)/);
+assert.match(deployScript, /if \[ -L "\$current" \]; then active=\$\(readlink -e "\$current"\)/);
+assert.match(deployScript, /Canvas current path exists but is not a symlink/);
+assert.match(deployScript, /if \[ -L "\$current\.previous" \]; then previous=\$\(readlink -e "\$current\.previous"\)/);
 assert.match(deployScript, /restoreRemoteReleaseState\(originalState, originalState\.previous\)/);
 assert.match(deployScript, /restoreAfterFailedActivation\(originalState, releaseDir\)/);
 assert.match(deployScript, /withRemoteDeployLock/);
