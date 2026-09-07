@@ -2,6 +2,7 @@ export type VisionaryHostFeatureFlags = {
     image: boolean;
     text: boolean;
     imageDeliveryAck?: boolean;
+    referenceImageDirectUpload?: boolean;
 };
 
 export type VisionaryHostUser = {
@@ -67,6 +68,21 @@ export type VisionaryHostImageRequest = VisionaryHostRequestContext & {
     optimizeChineseText: boolean;
     referenceGenerationIds?: string[];
     referenceImageRefs?: string[];
+};
+
+export type VisionaryHostReferenceUploadTicket = {
+    index: number;
+    filename: string | null;
+    uploadUrl: string;
+    storageRef: string;
+    headers?: Record<string, string>;
+    maxBytes: number;
+    expiresSeconds: number;
+    reused?: boolean;
+};
+
+export type VisionaryHostReferenceUploadResponse = {
+    uploads: VisionaryHostReferenceUploadTicket[];
 };
 
 export type VisionaryHostImageQuote = {

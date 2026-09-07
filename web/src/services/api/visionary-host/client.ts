@@ -36,6 +36,7 @@ import type {
     VisionaryHostImageRecoveryResponse,
     VisionaryHostImageRequest,
     VisionaryHostImageResponse,
+    VisionaryHostReferenceUploadResponse,
     VisionaryHostRequestContext,
     VisionaryHostSseFrame,
     VisionaryHostTextCapabilities,
@@ -54,6 +55,7 @@ export const HOST_IMAGE_RECOVERY_BATCH_LIMIT = 6;
 const HOST_OPERATION_PREFLIGHT_GRACE_MS = 2 * 60_000;
 const HOST_IMAGE_DELIVERY_ACK_TIMEOUT_MS = 10_000;
 const preparedReferenceBlobs = new WeakMap<ReferenceImage, Map<number, Promise<Blob>>>();
+let referenceImageDirectUploadEnabled = false;
 const textConversationStore = localforage.createInstance({
     name: "infinite-canvas",
     storeName: "visionary_host_text_conversations",
@@ -162,7 +164,9 @@ export async function exchangeVisionaryHostTicket(ticket: string, nonce: string)
 }
 
 export async function fetchVisionaryHostBootstrap() {
-    return hostJson<VisionaryHostBootstrap>("/bootstrap");
+    const bootstrap = await hostJson<VisionaryHostBootstrap>("/bootstrap");
+    referenceImageDirectUploadEnabled = Boolean(bootstrap.features.referenceImageDirectUpload);
+    return bootstrap;
 }
 
 export async function quoteVisionaryHostImage(context: VisionaryHostRequestContext, parameters: HostImageParameters, signal?: AbortSignal) {
@@ -184,7 +188,9 @@ export async function requestVisionaryHostImage(context: VisionaryHostRequestCon
         // Keep preparation inside the cross-tab node lock. Compression/read
         // failures still happen before a durable operation exists, while a
         // second tab cannot race this preparation into another charge.
-        const preparedBody = references.length ? await buildImageFormData(request, references) : JSON.stringify(request);
+        const preparedBody = references.length
+            ? await buildImageRequestBody(request, references, options?.signal)
+            : JSON.stringify(request);
         throwIfAborted(options?.signal);
         const now = Date.now();
         await persistHostOperationPreflight(
@@ -673,24 +679,110 @@ function buildImageRequest(context: VisionaryHostRequestContext, prompt: string,
     };
 }
 
-async function buildImageFormData(request: VisionaryHostImageRequest, references: ReferenceImage[]) {
+async function buildImageRequestWithReferences(request: VisionaryHostImageRequest, references: ReferenceImage[], signal?: AbortSignal) {
+    if (references.length > MAX_HOST_REFERENCE_IMAGES) throw new Error(`最多只能上传 ${MAX_HOST_REFERENCE_IMAGES} 张参考图。`);
+    // Decode/compress one reference at a time. This keeps several large
+    // canvas images from allocating full-size canvases concurrently. The
+    // per-image target also keeps direct object-storage uploads within the
+    // server's 6MB/30MB reference limits.
+    const targetBytes = Math.min(6 * 1024 * 1024, Math.floor(MAX_HOST_REFERENCE_TOTAL_BYTES / Math.max(1, references.length)));
+    const blobs: Blob[] = [];
+    for (const reference of references) {
+        throwIfAborted(signal);
+        blobs.push(await referenceImageBlob(reference, targetBytes));
+    }
+
+    const files = [];
+    for (let index = 0; index < blobs.length; index += 1) {
+        const blob = blobs[index];
+        throwIfAborted(signal);
+        files.push({
+            filename: `reference-${index + 1}.${imageExtension(blob.type)}`,
+            size: blob.size,
+            contentType: blob.type,
+            fileHash: await hashBlobSha256(blob),
+        });
+    }
+    const prepared = await hostJson<VisionaryHostReferenceUploadResponse>("/reference-images/upload-urls", {
+        method: "POST",
+        body: JSON.stringify({ files }),
+        signal,
+    });
+    if (!Array.isArray(prepared?.uploads) || prepared.uploads.length !== blobs.length) {
+        throw new Error("参考图上传凭据无效，请重试。");
+    }
+    const tickets = new Map(prepared.uploads.map((ticket) => [ticket.index, ticket]));
+    const storageRefs: string[] = [];
+    for (let index = 0; index < blobs.length; index += 1) {
+        const blob = blobs[index];
+        const ticket = tickets.get(index);
+        if (!ticket?.storageRef || (!ticket.reused && !ticket.uploadUrl)) {
+            throw new Error(`第 ${index + 1} 张参考图上传凭据无效，请重试。`);
+        }
+        if (Number.isFinite(ticket.maxBytes) && blob.size > ticket.maxBytes) {
+            throw new Error(`第 ${index + 1} 张参考图压缩后仍超过上传限制。`);
+        }
+        if (!ticket.reused) {
+            throwIfAborted(signal);
+            const response = await fetch(ticket.uploadUrl, {
+                method: "PUT",
+                headers: ticket.headers || { "Content-Type": blob.type },
+                body: blob,
+                signal,
+            });
+            if (!response.ok) throw new Error(`第 ${index + 1} 张参考图上传失败，请重试。`);
+        }
+        storageRefs.push(ticket.storageRef);
+    }
+    return { ...request, referenceImageRefs: storageRefs };
+}
+
+async function buildImageRequestBody(request: VisionaryHostImageRequest, references: ReferenceImage[], signal?: AbortSignal) {
+    if (referenceImageDirectUploadEnabled) {
+        try {
+            return JSON.stringify(await buildImageRequestWithReferences(request, references, signal));
+        } catch (error) {
+            if (isAbortError(error)) throw error;
+            if (error instanceof VisionaryHostApiError) {
+                if (error.status >= 400 && error.status < 500 && ![404, 405].includes(error.status)) throw error;
+                if ([404, 405].includes(error.status)) referenceImageDirectUploadEnabled = false;
+            }
+            // A rolled-back host, temporary ticket outage, or object-storage
+            // upload failure can safely use multipart because no durable
+            // Canvas operation or charge exists at this point. The server-side
+            // legacy path persists these exact compressed bytes before queueing.
+        }
+    }
+    return buildImageFormData(request, references, signal);
+}
+
+async function buildImageFormData(request: VisionaryHostImageRequest, references: ReferenceImage[], signal?: AbortSignal) {
     if (references.length > MAX_HOST_REFERENCE_IMAGES) throw new Error(`最多只能上传 ${MAX_HOST_REFERENCE_IMAGES} 张参考图。`);
     const form = new FormData();
     Object.entries(request).forEach(([key, value]) => {
         if (Array.isArray(value)) form.set(key, JSON.stringify(value));
         else form.set(key, String(value));
     });
-    // Decode/compress one reference at a time. This keeps several large
-    // canvas images from allocating full-size canvases concurrently. The
-    // per-image target also keeps the whole request under the server's 30MB
-    // aggregate reference limit.
     const targetBytes = Math.min(6 * 1024 * 1024, Math.floor(MAX_HOST_REFERENCE_TOTAL_BYTES / Math.max(1, references.length)));
-    const blobs: Blob[] = [];
-    for (const reference of references) {
-        blobs.push(await referenceImageBlob(reference, targetBytes));
+    for (let index = 0; index < references.length; index += 1) {
+        throwIfAborted(signal);
+        const blob = await referenceImageBlob(references[index], targetBytes);
+        form.append("images", blob, `reference-${index + 1}.${imageExtension(blob.type)}`);
     }
-    blobs.forEach((blob, index) => form.append("images", blob, `reference-${index + 1}.${imageExtension(blob.type)}`));
     return form;
+}
+
+async function hashBlobSha256(blob: Blob) {
+    try {
+        const subtle = globalThis.crypto?.subtle;
+        if (!subtle) return null;
+        const digest = await subtle.digest("SHA-256", await blob.arrayBuffer());
+        return Array.from(new Uint8Array(digest))
+            .map((byte) => byte.toString(16).padStart(2, "0"))
+            .join("");
+    } catch {
+        return null;
+    }
 }
 
 async function referenceImageBlob(image: ReferenceImage, targetBytes: number) {
@@ -1052,6 +1144,7 @@ function readCookie(name: string) {
 
 function responseError(status: number, payload: Record<string, unknown> | null, fallback: string) {
     const raw = readString(payload?.error) || readString(payload?.message) || fallback;
+    if (payload?.preDispatch === true) return new VisionaryHostPreDispatchError(raw);
     if (status === 401) return new VisionaryHostApiError(status, "画布会话已失效，请返回主站重新打开画布。");
     if (status === 403) return new VisionaryHostApiError(status, raw || "当前账号没有画布使用权限。");
     if (status === 404) return new VisionaryHostApiError(status, raw || "画布功能暂未开放。");
