@@ -15,7 +15,7 @@ const visionaryHostApiOrigin = process.env.VITE_VISIONARY_HOST_API_ORIGIN || "ht
 const hostedDevContentSecurityPolicy = [
     "default-src 'self'",
     "base-uri 'self'",
-    "connect-src 'self' blob: ws:",
+    "connect-src 'self' blob: ws: https://555acb10d58a7ff33a36dc527b319fb0.r2.cloudflarestorage.com",
     "font-src 'self' data:",
     "frame-ancestors https://visionary.beer http://localhost:* http://127.0.0.1:*",
     "frame-src 'none'",

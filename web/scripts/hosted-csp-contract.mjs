@@ -1,4 +1,5 @@
 const REQUIRED_PARENT_ORIGIN = "https://visionary.beer";
+const REQUIRED_OBJECT_STORAGE_ORIGIN = "https://555acb10d58a7ff33a36dc527b319fb0.r2.cloudflarestorage.com";
 
 export function assertCanvasCspHeaders(rawHeaders, { requireBlob = true } = {}) {
     const policyValues = String(rawHeaders || "")
@@ -31,8 +32,13 @@ export function assertCanvasCspHeaders(rawHeaders, { requireBlob = true } = {}) 
     }
     if (requireBlob) {
         const connectSources = directives.get("connect-src") || directives.get("default-src") || [];
-        if (connectSources.includes("'none'") || !connectSources.includes("'self'") || !connectSources.includes("blob:")) {
-            throw new Error("Canvas response CSP is missing connect-src 'self' blob:.");
+        if (
+            connectSources.includes("'none'")
+            || !connectSources.includes("'self'")
+            || !connectSources.includes("blob:")
+            || !connectSources.includes(REQUIRED_OBJECT_STORAGE_ORIGIN)
+        ) {
+            throw new Error("Canvas response CSP connect-src is missing the required self, blob, or object-storage source.");
         }
     }
 }

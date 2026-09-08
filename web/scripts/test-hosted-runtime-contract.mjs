@@ -259,8 +259,8 @@ assert.match(imageCompression, /attempt < 7/);
 assert.match(imageCompression, /image\/webp/);
 assert.match(imageCompression, /image\/jpeg/);
 
-assert.match(nginxHeaders, /connect-src 'self' blob:/);
-assert.match(viteConfig, /"connect-src 'self' blob: ws:"/);
+assert.match(nginxHeaders, /connect-src 'self' blob: https:\/\/555acb10d58a7ff33a36dc527b319fb0\.r2\.cloudflarestorage\.com/);
+assert.match(viteConfig, /"connect-src 'self' blob: ws: https:\/\/555acb10d58a7ff33a36dc527b319fb0\.r2\.cloudflarestorage\.com"/);
 assert.match(viteConfig, /"script-src 'self' 'unsafe-inline'"/);
 assert.match(viteConfig, /"\/api\/canvas\/v1": \{\s*target: visionaryHostApiOrigin,\s*changeOrigin: false,/);
 
@@ -349,13 +349,14 @@ assert.match(dependencyAudit, /allowedPackages = new Set\(\["react-router", "rea
 assert.match(dependencyAudit, /report\?\.error/);
 assert.match(dependencyAudit, /!report\?\.metadata\?\.vulnerabilities/);
 
-const validCspHeaders = "HTTP/2 200\r\nContent-Security-Policy: default-src 'self'; frame-ancestors https://visionary.beer; connect-src 'self' blob:\r\n";
+const validCspHeaders = "HTTP/2 200\r\nContent-Security-Policy: default-src 'self'; frame-ancestors https://visionary.beer; connect-src 'self' blob: https://555acb10d58a7ff33a36dc527b319fb0.r2.cloudflarestorage.com\r\n";
 assert.doesNotThrow(() => assertCanvasCspHeaders(validCspHeaders));
 assert.doesNotThrow(() => assertCanvasCspHeaders("Content-Security-Policy: default-src 'self'; frame-ancestors https://visionary.beer; connect-src 'self'", { requireBlob: false }));
-assert.throws(() => assertCanvasCspHeaders("Content-Security-Policy: frame-ancestors https://visionary.beer; connect-src 'self' blob:\r\nContent-Security-Policy: frame-ancestors 'none'; connect-src 'self'"), /exactly one Content-Security-Policy/);
-assert.throws(() => assertCanvasCspHeaders("Content-Security-Policy: frame-ancestors 'none'; connect-src 'self' blob:"), /frame-ancestors/);
+assert.throws(() => assertCanvasCspHeaders("Content-Security-Policy: frame-ancestors https://visionary.beer; connect-src 'self' blob: https://555acb10d58a7ff33a36dc527b319fb0.r2.cloudflarestorage.com\r\nContent-Security-Policy: frame-ancestors 'none'; connect-src 'self'"), /exactly one Content-Security-Policy/);
+assert.throws(() => assertCanvasCspHeaders("Content-Security-Policy: frame-ancestors 'none'; connect-src 'self' blob: https://555acb10d58a7ff33a36dc527b319fb0.r2.cloudflarestorage.com"), /frame-ancestors/);
 assert.throws(() => assertCanvasCspHeaders("Content-Security-Policy: frame-ancestors https://visionary.beer; connect-src 'self'"), /connect-src/);
-assert.throws(() => assertCanvasCspHeaders("Content-Security-Policy: frame-ancestors 'none'; frame-ancestors https://visionary.beer; connect-src 'none'; connect-src 'self' blob:"), /repeats the frame-ancestors directive/);
+assert.throws(() => assertCanvasCspHeaders("Content-Security-Policy: frame-ancestors https://visionary.beer; connect-src 'self' blob:"), /object-storage/);
+assert.throws(() => assertCanvasCspHeaders("Content-Security-Policy: frame-ancestors 'none'; frame-ancestors https://visionary.beer; connect-src 'none'; connect-src 'self' blob: https://555acb10d58a7ff33a36dc527b319fb0.r2.cloudflarestorage.com"), /repeats the frame-ancestors directive/);
 
 const hostedProtocolVersion = Number(/VISIONARY_HOST_PROTOCOL_VERSION = (\d+) as const/.exec(hostedConstants)?.[1]);
 assert.ok(Number.isInteger(hostedProtocolVersion));
