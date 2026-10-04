@@ -4,6 +4,7 @@ import { nanoid } from "nanoid";
 import { readImageMeta } from "@/lib/image-utils";
 import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
 import { isCurrentVisionaryHostStorageKey, visionaryHostStorageKey } from "@/services/api/visionary-host/storage-namespace";
+import { withRequestBudget } from "@/services/api/visionary-host/request-budget";
 
 export type UploadedImage = {
     url: string;
@@ -33,25 +34,44 @@ function storedImageCreatedAt(value: StoredImageValue | null) {
     return value instanceof Blob ? 0 : value?.createdAt || 0;
 }
 
-export async function uploadImage(input: string | Blob): Promise<UploadedImage> {
-    const blob = typeof input === "string" ? await imageInputToBlob(input) : input;
+export async function uploadImage(input: string | Blob, options: { signal?: AbortSignal; timeoutMs?: number } = {}): Promise<UploadedImage> {
+    if (options.timeoutMs) return withRequestBudget(options.signal, options.timeoutMs, (signal) => storeImage(input, signal));
+    return storeImage(input, options.signal);
+}
+
+async function storeImage(input: string | Blob, signal?: AbortSignal): Promise<UploadedImage> {
+    const blob = typeof input === "string" ? await imageInputToBlob(input, signal) : input;
+    signal?.throwIfAborted();
     const storageKey = visionaryHostStorageKey(`image:${nanoid()}`);
     await store.setItem(storageKey, { blob, createdAt: Date.now() } satisfies StoredImageValue);
+    // IndexedDB cannot be cancelled. Remove an orphan if its write finishes
+    // after the delivery deadline; never expose it to a newer canvas task.
+    if (signal?.aborted) {
+        void store.removeItem(storageKey).catch(() => undefined);
+        signal.throwIfAborted();
+    }
     const url = URL.createObjectURL(blob);
     objectUrls.set(storageKey, url);
     try {
         const meta = await readImageMeta(url);
+        signal?.throwIfAborted();
         return { url, storageKey, width: meta.width, height: meta.height, bytes: blob.size, mimeType: blob.type || meta.mimeType };
     } catch (error) {
         objectUrls.delete(storageKey);
         URL.revokeObjectURL(url);
-        await store.removeItem(storageKey).catch(() => undefined);
+        void store.removeItem(storageKey).catch(() => undefined);
         throw error;
     }
 }
 
-async function imageInputToBlob(input: string) {
-    if (!input.startsWith("data:")) return (await fetch(input)).blob();
+async function imageInputToBlob(input: string, signal?: AbortSignal) {
+    if (!input.startsWith("data:")) {
+        const response = await fetch(input, { signal });
+        if (!response.ok) throw new Error(response.status === 401 ? "登录已失效，请重新打开画布后领取原图。" : "原图下载暂未成功，请重新领取。");
+        const blob = await response.blob();
+        if (!blob.size || (VISIONARY_HOSTED && !/^image\/(png|jpeg|webp|gif|avif|bmp|svg\+xml)$/i.test(blob.type))) throw new Error("原图内容无效，请稍后重新领取。");
+        return blob;
+    }
     const separator = input.indexOf(",");
     if (separator < 0) throw new Error("图片数据格式无效");
     const header = input.slice(0, separator);

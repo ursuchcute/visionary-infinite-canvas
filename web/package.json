@@ -19,12 +19,13 @@
         "test:canvas-composer-controls": "node scripts/test-canvas-composer-controls.mjs",
         "test:canvas-reference-connections": "node scripts/test-canvas-reference-connections.mjs",
         "test:hosted-runtime-contract": "node scripts/test-hosted-runtime-contract.mjs",
-        "test:release": "npm run test:canvas-header-ui && npm run test:canvas-composer-controls && npm run test:canvas-reference-connections && npm run test:hosted-runtime-contract",
+        "test:release": "npm run test:canvas-header-ui && npm run test:canvas-composer-controls && npm run test:canvas-reference-connections && npm run test:hosted-runtime-contract && npm run test:hosted-image-delivery",
         "typecheck": "tsc --noEmit",
         "benchmark:canvas": "node scripts/canvas-benchmark.mjs",
         "start": "vite preview --host 0.0.0.0 --port 3000",
         "format": "prettier --write .",
-        "format:check": "prettier --check ."
+        "format:check": "prettier --check .",
+        "test:hosted-image-delivery": "node scripts/test-hosted-image-delivery.mjs"
     },
     "dependencies": {
         "@ant-design/icons": "^6.1.1",

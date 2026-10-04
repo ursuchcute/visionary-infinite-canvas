@@ -102,9 +102,15 @@ import {
     isVisionaryHostPreflightCancelledError,
     recoverStoredVisionaryHostImages,
     recoverStoredVisionaryHostTexts,
-    VisionaryHostOperationPendingError,
+    VisionaryHostImageDeliveryPendingError,
 } from "@/services/api/visionary-host/client";
 import { buildHostedConfirmingNodeIds, buildProtectedHostedNodeIds, clearHostedPreflightGuard, hasHostedOperationConflict, resolveHostedBatchStatus } from "@/services/api/visionary-host/operation-state";
+
+import { CanvasImageDeliveries } from "@/components/canvas/hosted/canvas-image-deliveries";
+import { HOST_IMAGE_DELIVERY_RETRY_EVENT, setHostImageDelivery, retryHostImageDelivery } from "@/stores/canvas/use-host-image-delivery-store";
+import { resetImageDeliveryRetry } from "@/services/api/visionary-host/image-delivery-queue";
+import { hostedPendingImageMetadata, markImageAwaitingDelivery, markImagesAwaitingDelivery } from "@/services/api/visionary-host/image-delivery-state";
+import { withRequestBudget } from "@/services/api/visionary-host/request-budget";
 
 // 内置节点注册到统一注册表(模块加载时执行一次)
 registerBuiltinNodes();
@@ -160,12 +166,13 @@ const IMAGE_PROMPT_REVERSE_PRESET = `请根据参考图片反推一段适合用�
 2. 覆盖主体、构图、风格、光线、色彩、材质、镜头和氛围。
 3. 尽量写成可直接用于生图模型的完整提示词。`;
 
-async function persistGeneratedCanvasImage(image: GeneratedCanvasImage, nodeId: string) {
+async function persistGeneratedCanvasImage(image: GeneratedCanvasImage, nodeId: string, signal?: AbortSignal) {
     try {
-        return await uploadImage(image.dataUrl);
+        return await uploadImage(image.dataUrl, VISIONARY_HOSTED ? { signal, timeoutMs: 45_000 } : undefined);
     } catch (error) {
         if (VISIONARY_HOSTED && image.operationId) {
-            throw new VisionaryHostOperationPendingError(image.operationId, nodeId, "图片已生成且不会重复扣分，但浏览器暂未保存成功，正在等待恢复。");
+            resetImageDeliveryRetry(image.operationId);
+            throw new VisionaryHostImageDeliveryPendingError(image.operationId, nodeId, "图片已生成且不会重复扣分，领取暂未完成。请重新领取原图。");
         }
         throw error;
     }
@@ -176,6 +183,7 @@ function hostedGenerationMetadata(image: GeneratedCanvasImage) {
     return {
         hostOperationId: image.operationId,
         hostGenerationId: image.id,
+        hostImageDeliveryStatus: undefined,
         chargedCredits: image.billing?.chargedCredits,
     };
 }
@@ -216,6 +224,7 @@ function restoreActiveHostedOperationGuards(nodes: CanvasNodeData[], records: Ac
     return nodes.map((node) => {
         const record = latestByNodeId.get(node.id);
         if (!record || (node.metadata?.hostOperationId && node.metadata.hostOperationId !== record.clientOperationId)) return node;
+        if (node.metadata?.hostOperationId === record.clientOperationId && node.metadata.status === NODE_STATUS_LOADING && node.metadata.errorDetails === "正在确认服务端任务状态，请勿重复生成。") return node;
         return {
             ...node,
             metadata: {
@@ -389,7 +398,6 @@ function InfiniteCanvasPage() {
     const selectionBoxRef = useRef(selectionBox);
     const pendingConnectionCreateRef = useRef(pendingConnectionCreate);
     const generationRequestsRef = useRef(new Map<string, CanvasGenerationRequest>());
-    const recoveryDeliveryFailuresRef = useRef(new Map<string, number>());
     const hostRecoveryReady = !VISIONARY_HOSTED || (hostProjectLeaseOwned && hostRecoveryScans.projectId === projectId && hostRecoveryScans.image && hostRecoveryScans.text);
     const hostRecoveryReadyRef = useRef(hostRecoveryReady);
     const { graph, resourceGraph, resourceNodes, visibleHiddenBatchNodeIds } = useCanvasIndexes(nodes, connections, collapsingBatchIds);
@@ -504,7 +512,9 @@ function InfiniteCanvasPage() {
             if (!storedProject || storedProject.nodes !== nextNodes) {
                 throw new Error("画布项目已不存在，无法保存恢复结果。");
             }
-            await flushCanvasStorePersistence();
+            await withRequestBudget(undefined, 15_000, async () => {
+                await flushCanvasStorePersistence();
+            });
         },
         [projectId, updateProject],
     );
@@ -519,7 +529,9 @@ function InfiniteCanvasPage() {
             if (!storedProject || storedProject.nodes !== nextNodes || storedProject.connections !== nextConnections) {
                 throw new Error("画布项目已不存在，无法保存生成任务。");
             }
-            await flushCanvasStorePersistence();
+            await withRequestBudget(undefined, 15_000, async () => {
+                await flushCanvasStorePersistence();
+            });
         },
         [projectId, updateProject],
     );
@@ -590,7 +602,10 @@ function InfiniteCanvasPage() {
         const controller = new AbortController();
         let timer: number | null = null;
         let consecutiveFailures = 0;
+        let scanning = false;
         const recover = async () => {
+            if (scanning || controller.signal.aborted) return;
+            scanning = true;
             try {
                 const result = await recoverStoredVisionaryHostImages(
                     projectId,
@@ -600,9 +615,17 @@ function InfiniteCanvasPage() {
                         // the same completed image a second time.
                         if (generationRequestsRef.current.has(record.nodeId)) return false;
                         const existingNode = nodesRef.current.find((node) => node.id === record.nodeId);
-                        const targetConflict = Boolean(existingNode?.metadata?.hostOperationId && existingNode.metadata.hostOperationId !== record.clientOperationId);
-                        const failedDeliveries = recoveryDeliveryFailuresRef.current.get(record.clientOperationId) || 0;
-                        if (failedDeliveries >= 5) return false;
+                        const targetConflict =
+                            Boolean(existingNode?.metadata?.content && existingNode.metadata.hostOperationId !== record.clientOperationId) ||
+                            Boolean(existingNode?.metadata?.hostOperationId && existingNode.metadata.hostOperationId !== record.clientOperationId);
+                        if (controller.signal.aborted) return false;
+                        if (record.status === "completed") {
+                            setHostImageDelivery({ projectId, operationId: record.clientOperationId, status: "receiving" });
+                            setNodes((prev) => {
+                                const next = markImageAwaitingDelivery(prev, record.nodeId, record.clientOperationId);
+                                return next.some((node, index) => node !== prev[index]) ? syncConnectedConfigStatus(next, connectionsRef.current, record.nodeId) : prev;
+                            });
+                        }
                         try {
                             if (record.status === "failed") {
                                 // A failed operation has no paid output to preserve. If its
@@ -653,27 +676,37 @@ function InfiniteCanvasPage() {
                                     }
                                 }
                                 await persistHostedRecoveryNodes(deliveredNodes);
-                                recoveryDeliveryFailuresRef.current.delete(record.clientOperationId);
                                 return true;
                             }
                             if (!existingNode || targetConflict) {
                                 const existingFallback = nodesRef.current.find((node) => node.id === recoveredHostedNodeId("image", record.clientOperationId));
-                                if (existingFallback?.metadata?.hostOperationId === record.clientOperationId && existingFallback.metadata.content && existingFallback.metadata.storageKey && (await getImageBlob(existingFallback.metadata.storageKey))) {
+                                if (
+                                    existingFallback?.metadata?.hostOperationId === record.clientOperationId &&
+                                    existingFallback.metadata.content &&
+                                    existingFallback.metadata.storageKey &&
+                                    (await withRequestBudget(controller.signal, 15_000, () => getImageBlob(existingFallback.metadata!.storageKey!)))
+                                ) {
                                     await persistHostedRecoveryNodes(nodesRef.current);
-                                    recoveryDeliveryFailuresRef.current.delete(record.clientOperationId);
                                     return true;
                                 }
                             }
-                            if (!targetConflict && existingNode?.metadata?.hostOperationId === record.clientOperationId && existingNode.metadata.content && existingNode.metadata.storageKey && (await getImageBlob(existingNode.metadata.storageKey))) {
+                            if (
+                                !targetConflict &&
+                                existingNode?.metadata?.hostOperationId === record.clientOperationId &&
+                                existingNode.metadata.content &&
+                                existingNode.metadata.storageKey &&
+                                (await withRequestBudget(controller.signal, 15_000, () => getImageBlob(existingNode.metadata!.storageKey!)))
+                            ) {
                                 await persistHostedRecoveryNodes(nodesRef.current);
-                                recoveryDeliveryFailuresRef.current.delete(record.clientOperationId);
                                 return true;
                             }
                             if (!record.imageUrl) return false;
-                            const image = await uploadImage(record.imageUrl);
+                            const image = await uploadImage(record.imageUrl, { signal: controller.signal, timeoutMs: 45_000 });
+                            controller.signal.throwIfAborted();
                             const currentNodes = nodesRef.current;
                             const target = currentNodes.find((node) => node.id === record.nodeId);
-                            const currentTargetConflict = Boolean(target?.metadata?.hostOperationId && target.metadata.hostOperationId !== record.clientOperationId);
+                            const currentTargetConflict =
+                                Boolean(target?.metadata?.content && target.metadata.hostOperationId !== record.clientOperationId) || Boolean(target?.metadata?.hostOperationId && target.metadata.hostOperationId !== record.clientOperationId);
                             if (!target || currentTargetConflict) {
                                 const fallbackId = recoveredHostedNodeId("image", record.clientOperationId);
                                 const existingFallback = currentNodes.find((node) => node.id === fallbackId);
@@ -689,6 +722,7 @@ function InfiniteCanvasPage() {
                                     metadata: {
                                         ...existingFallback?.metadata,
                                         ...imageMetadata(image),
+                                        hostImageDeliveryStatus: undefined,
                                         status: NODE_STATUS_SUCCESS,
                                         errorDetails: undefined,
                                         hostOperationId: record.clientOperationId,
@@ -698,13 +732,13 @@ function InfiniteCanvasPage() {
                                 };
                                 const deliveredNodes = existingFallback ? currentNodes.map((node) => (node.id === fallbackId ? fallbackNode : node)) : [...currentNodes, fallbackNode];
                                 await persistHostedRecoveryNodes(deliveredNodes);
-                                recoveryDeliveryFailuresRef.current.delete(record.clientOperationId);
                                 message.success("已将上次生成结果恢复为独立图片节点");
                                 return true;
                             }
                             const imageSize = fitNodeSize(image.width, image.height, target.width, target.height);
                             const recoveredMetadata: CanvasNodeMetadata = {
                                 ...imageMetadata(image),
+                                hostImageDeliveryStatus: undefined,
                                 errorDetails: undefined,
                                 hostOperationId: record.clientOperationId,
                                 hostGenerationId: record.generationId,
@@ -742,29 +776,17 @@ function InfiniteCanvasPage() {
                                 deliveredNodes = syncConnectedConfigStatus(withRootStatus, connectionsRef.current, rootId);
                             }
                             await persistHostedRecoveryNodes(deliveredNodes);
-                            recoveryDeliveryFailuresRef.current.delete(record.clientOperationId);
                             message.success("已恢复上次未完成的图片任务");
                             return true;
-                        } catch {
-                            const attempts = failedDeliveries + 1;
-                            recoveryDeliveryFailuresRef.current.set(record.clientOperationId, attempts);
-                            if (attempts >= 5) {
+                        } catch (error) {
+                            if (controller.signal.aborted) return false;
+                            if (record.status === "completed") {
+                                const details = error instanceof DOMException && error.name === "QuotaExceededError" ? "浏览器存储空间不足，请释放空间后重新领取原图。" : "图片已生成，领取暂未完成。可以重新领取原图，不会再次扣分。";
+                                setHostImageDelivery({ projectId, operationId: record.clientOperationId, status: "failed", error: details });
                                 setNodes((prev) =>
                                     prev.map((node) =>
-                                        node.id === record.nodeId
-                                            ? {
-                                                  ...node,
-                                                  metadata: {
-                                                      ...node.metadata,
-                                                      // Keep the node in the confirming state. The server task is
-                                                      // already settled; allowing a retry while local storage is
-                                                      // full would create a second charge before the result can be
-                                                      // delivered.
-                                                      status: NODE_STATUS_LOADING,
-                                                      errorDetails: "图片已生成且不会重复扣分，但浏览器保存失败。请释放浏览器存储空间后刷新重试。",
-                                                      hostOperationId: record.clientOperationId,
-                                                  },
-                                              }
+                                        node.id === record.nodeId && node.metadata?.hostOperationId === record.clientOperationId && !node.metadata.content
+                                            ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_ERROR, hostImageDeliveryStatus: "failed", errorDetails: details } }
                                             : node,
                                     ),
                                 );
@@ -773,9 +795,17 @@ function InfiniteCanvasPage() {
                         }
                     },
                     controller.signal,
-                    (records) => {
-                        setNodes((prev) => restoreActiveHostedOperationGuards(prev, records));
-                        setHostRecoveryScans((current) => (current.projectId === projectId ? { ...current, image: true } : current));
+                    (records, completed) => {
+                        setNodes((prev) => {
+                            const restored = restoreActiveHostedOperationGuards(prev, records);
+                            const next = markImagesAwaitingDelivery(
+                                restored,
+                                completed.filter((record) => !generationRequestsRef.current.has(record.nodeId)),
+                            );
+                            if (next.every((node, index) => node === prev[index])) return prev;
+                            return next.reduce((current, node, index) => (node !== prev[index] ? syncConnectedConfigStatus(current, connectionsRef.current, node.id) : current), next);
+                        });
+                        setHostRecoveryScans((current) => (current.projectId === projectId && !current.image ? { ...current, image: true } : current));
                     },
                     imageDeliveryAckEnabled,
                 );
@@ -783,15 +813,26 @@ function InfiniteCanvasPage() {
             } catch (error) {
                 if (error instanceof DOMException && error.name === "AbortError") return;
                 consecutiveFailures = Math.min(consecutiveFailures + 1, 4);
-                message.error(error instanceof Error ? error.message : "恢复图片任务失败");
+                message.error("暂时无法确认图片任务，将自动重试。请勿重复提交该任务。");
+            } finally {
+                scanning = false;
             }
             if (!controller.signal.aborted) {
                 timer = window.setTimeout(recover, Math.min(30_000, 3_000 * 2 ** consecutiveFailures));
             }
         };
+        const onDeliveryRetry = (event: Event) => {
+            const detail = (event as CustomEvent<{ projectId: string; operationId: string }>).detail;
+            if (detail?.projectId !== projectId || controller.signal.aborted) return;
+            resetImageDeliveryRetry(detail.operationId);
+            if (timer !== null) window.clearTimeout(timer);
+            void recover();
+        };
+        window.addEventListener(HOST_IMAGE_DELIVERY_RETRY_EVENT, onDeliveryRetry);
         void recover();
         return () => {
             controller.abort();
+            window.removeEventListener(HOST_IMAGE_DELIVERY_RETRY_EVENT, onDeliveryRetry);
             if (timer !== null) window.clearTimeout(timer);
         };
     }, [hostProjectLeaseOwned, imageDeliveryAckEnabled, message, persistHostedRecoveryNodes, projectId, projectLoaded]);
@@ -2612,6 +2653,7 @@ function InfiniteCanvasPage() {
             height: width * (image.height / image.width),
             metadata: {
                 ...imageMetadata(image),
+                hostImageDeliveryStatus: undefined,
                 prompt: node.metadata?.prompt,
             },
         };
@@ -2645,6 +2687,7 @@ function InfiniteCanvasPage() {
                         height: cellHeight,
                         metadata: {
                             ...imageMetadata(image),
+                            hostImageDeliveryStatus: undefined,
                             prompt: node.metadata?.prompt,
                         },
                     } satisfies CanvasNodeData;
@@ -2696,14 +2739,14 @@ function InfiniteCanvasPage() {
                 const image = await requestEdit(generationConfig, prompt, [source], { id: `${node.id}-mask`, name: "mask.png", type: "image/png", dataUrl: payload.maskDataUrl }, hostRequestOptions("image", childId, controller.signal, node.id)).then(
                     (items) => items[0],
                 );
-                const uploaded = await persistGeneratedCanvasImage(image, childId);
+                const uploaded = await persistGeneratedCanvasImage(image, childId, controller.signal);
                 const size = fitNodeSize(uploaded.width, uploaded.height, node.width, node.height);
                 setNodes((prev) =>
                     prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded), ...hostedGenerationMetadata(image), prompt, ...generationMetadata } } : item)),
                 );
             } catch (error) {
                 if (isVisionaryHostOperationPendingError(error)) {
-                    setNodes((prev) => prev.map((item) => (item.id === error.nodeId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_LOADING, errorDetails: error.message, hostOperationId: error.operationId } } : item)));
+                    setNodes((prev) => prev.map((item) => (item.id === error.nodeId ? { ...item, metadata: { ...item.metadata, ...hostedPendingImageMetadata(error) } } : item)));
                     return;
                 }
                 if (isGenerationCanceled(error)) return;
@@ -2734,6 +2777,7 @@ function InfiniteCanvasPage() {
             height: size.height,
             metadata: {
                 ...imageMetadata(image),
+                hostImageDeliveryStatus: undefined,
                 prompt: node.metadata?.prompt,
             },
         };
@@ -2784,14 +2828,14 @@ function InfiniteCanvasPage() {
                     undefined,
                     hostRequestOptions("image", childId, controller.signal, node.id),
                 ).then((items) => items[0]);
-                const uploaded = await persistGeneratedCanvasImage(image, childId);
+                const uploaded = await persistGeneratedCanvasImage(image, childId, controller.signal);
                 const size = fitNodeSize(uploaded.width, uploaded.height, imageConfig.width, imageConfig.height);
                 setNodes((prev) =>
                     prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded), ...hostedGenerationMetadata(image), prompt, ...generationMetadata } } : item)),
                 );
             } catch (error) {
                 if (isVisionaryHostOperationPendingError(error)) {
-                    setNodes((prev) => prev.map((item) => (item.id === error.nodeId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_LOADING, errorDetails: error.message, hostOperationId: error.operationId } } : item)));
+                    setNodes((prev) => prev.map((item) => (item.id === error.nodeId ? { ...item, metadata: { ...item.metadata, ...hostedPendingImageMetadata(error) } } : item)));
                     return;
                 }
                 if (isGenerationCanceled(error)) return;
@@ -2902,6 +2946,7 @@ function InfiniteCanvasPage() {
                                   metadata: {
                                       ...node.metadata,
                                       ...imageMetadata(image),
+                                      hostImageDeliveryStatus: undefined,
                                       errorDetails: undefined,
                                       freeResize: false,
                                       isBatchRoot: undefined,
@@ -2993,7 +3038,9 @@ function InfiniteCanvasPage() {
                 if (!scene) return;
                 setRunningNodeId(nodeId);
                 const controller = startGenerationRequest(nodeId, nodeId, nodeId);
-                setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, prompt: scene, status: NODE_STATUS_LOADING, errorDetails: undefined, hostOperationId: undefined } } : node)));
+                setNodes((prev) =>
+                    prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, prompt: scene, status: NODE_STATUS_LOADING, errorDetails: undefined, hostOperationId: undefined, hostImageDeliveryStatus: undefined } } : node)),
+                );
                 try {
                     const fullPrompt = (builtinPanel.promptPrefix || "") + scene;
                     // 上游图片节点作为参考图(图生图);无上游则纯文生图
@@ -3009,7 +3056,7 @@ function InfiniteCanvasPage() {
                     const image = refs.length
                         ? await requestEdit({ ...generationConfig, count: "1" }, fullPrompt, refs, undefined, hostRequestOptions("image", nodeId, controller.signal)).then((items) => items[0])
                         : await requestGeneration({ ...generationConfig, count: "1" }, fullPrompt, hostRequestOptions("image", nodeId, controller.signal)).then((items) => items[0]);
-                    const uploaded = await persistGeneratedCanvasImage(image, nodeId);
+                    const uploaded = await persistGeneratedCanvasImage(image, nodeId, controller.signal);
                     setNodes((prev) =>
                         prev.map((node) =>
                             node.id === nodeId
@@ -3020,7 +3067,7 @@ function InfiniteCanvasPage() {
                     setDialogNodeId(null);
                 } catch (error) {
                     if (isVisionaryHostOperationPendingError(error)) {
-                        setNodes((prev) => prev.map((node) => (node.id === error.nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_LOADING, errorDetails: error.message, hostOperationId: error.operationId } } : node)));
+                        setNodes((prev) => prev.map((node) => (node.id === error.nodeId ? { ...node, metadata: { ...node.metadata, ...hostedPendingImageMetadata(error) } } : node)));
                         return;
                     }
                     if (!isGenerationCanceled(error)) {
@@ -3067,7 +3114,10 @@ function InfiniteCanvasPage() {
                 return;
             }
             let pendingChildIds: string[] = [];
-            if (markSourceStatus) setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, prompt: statusPrompt, status: NODE_STATUS_LOADING, errorDetails: undefined, hostOperationId: undefined } } : node)));
+            if (markSourceStatus)
+                setNodes((prev) =>
+                    prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, prompt: statusPrompt, status: NODE_STATUS_LOADING, errorDetails: undefined, hostOperationId: undefined, hostImageDeliveryStatus: undefined } } : node)),
+                );
 
             try {
                 if (mode === "image") {
@@ -3112,6 +3162,7 @@ function InfiniteCanvasPage() {
                             prompt: effectivePrompt,
                             status: NODE_STATUS_LOADING,
                             hostOperationId: undefined,
+                            hostImageDeliveryStatus: undefined,
                             isBatchRoot: count > 1,
                             batchChildIds: count > 1 ? childIds : undefined,
                             batchUsesReferenceImages: referenceImages.length > 0,
@@ -3178,6 +3229,7 @@ function InfiniteCanvasPage() {
                     let hasSuccess = false;
                     let hasFailure = false;
                     let hasPending = false;
+                    let hasDeliveryPending = false;
                     await runWithConcurrency(targetIds, VISIONARY_HOSTED ? 2 : targetIds.length, async (targetId) => {
                         if (controller.signal.aborted) return false;
                         startGenerationRequest(targetId, nodeId, nodeId, controller);
@@ -3185,7 +3237,7 @@ function InfiniteCanvasPage() {
                             const image = referenceImages.length
                                 ? await requestEdit({ ...generationConfig, count: "1" }, effectivePrompt, referenceImages, undefined, hostRequestOptions("image", targetId, controller.signal, nodeId, batchAdmissionGroupId)).then((items) => items[0])
                                 : await requestGeneration({ ...generationConfig, count: "1" }, effectivePrompt, hostRequestOptions("image", targetId, controller.signal, nodeId, batchAdmissionGroupId)).then((items) => items[0]);
-                            const uploaded = await persistGeneratedCanvasImage(image, targetId);
+                            const uploaded = await persistGeneratedCanvasImage(image, targetId, controller.signal);
                             const imageSize = inheritSourceSize ? resultSize : fitNodeSize(uploaded.width, uploaded.height, imageConfig.width, imageConfig.height);
                             setNodes((prev) => {
                                 const root = prev.find((node) => node.id === rootId);
@@ -3216,8 +3268,9 @@ function InfiniteCanvasPage() {
                             return true;
                         } catch (error) {
                             if (isVisionaryHostOperationPendingError(error)) {
-                                hasPending = true;
-                                setNodes((prev) => prev.map((node) => (node.id === error.nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_LOADING, errorDetails: error.message, hostOperationId: error.operationId } } : node)));
+                                hasPending ||= !("deliveryPending" in error);
+                                hasDeliveryPending ||= "deliveryPending" in error;
+                                setNodes((prev) => prev.map((node) => (node.id === error.nodeId ? { ...node, metadata: { ...node.metadata, ...hostedPendingImageMetadata(error) } } : node)));
                                 return false;
                             }
                             if (isGenerationCanceled(error)) return false;
@@ -3286,7 +3339,7 @@ function InfiniteCanvasPage() {
                                       metadata: {
                                           ...node.metadata,
                                           status: hasSuccess ? NODE_STATUS_SUCCESS : hasPending ? NODE_STATUS_LOADING : NODE_STATUS_ERROR,
-                                          errorDetails: hasSuccess ? undefined : hasPending ? "正在确认服务端任务状态，请勿重复生成。" : "全部图片生成失败",
+                                          errorDetails: hasSuccess ? undefined : hasPending ? "正在确认服务端任务状态，请勿重复生成。" : hasDeliveryPending ? "图片已生成，等待领取原图。" : "全部图片生成失败",
                                       },
                                   }
                                 : node.id === nodeId && isEmptyImageNode
@@ -3295,7 +3348,7 @@ function InfiniteCanvasPage() {
                                         metadata: {
                                             ...node.metadata,
                                             status: hasSuccess ? NODE_STATUS_SUCCESS : hasPending ? NODE_STATUS_LOADING : NODE_STATUS_ERROR,
-                                            errorDetails: hasSuccess ? undefined : hasPending ? "正在确认服务端任务状态，请勿重复生成。" : "全部图片生成失败",
+                                            errorDetails: hasSuccess ? undefined : hasPending ? "正在确认服务端任务状态，请勿重复生成。" : hasDeliveryPending ? "图片已生成，等待领取原图。" : "全部图片生成失败",
                                         },
                                     }
                                   : node.id === rootId && !hasSuccess
@@ -3304,7 +3357,7 @@ function InfiniteCanvasPage() {
                                           metadata: {
                                               ...node.metadata,
                                               status: hasPending ? NODE_STATUS_LOADING : NODE_STATUS_ERROR,
-                                              errorDetails: hasPending ? "正在确认服务端任务状态，请勿重复生成。" : "全部图片生成失败",
+                                              errorDetails: hasPending ? "正在确认服务端任务状态，请勿重复生成。" : hasDeliveryPending ? "图片已生成，等待领取原图。" : "全部图片生成失败",
                                           },
                                       }
                                     : node,
@@ -3477,7 +3530,7 @@ function InfiniteCanvasPage() {
                     return;
                 }
                 if (isVisionaryHostOperationPendingError(error)) {
-                    setNodes((prev) => prev.map((node) => (node.id === error.nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_LOADING, errorDetails: error.message, hostOperationId: error.operationId } } : node)));
+                    setNodes((prev) => prev.map((node) => (node.id === error.nodeId ? { ...node, metadata: { ...node.metadata, ...hostedPendingImageMetadata(error) } } : node)));
                     return;
                 }
                 if (isGenerationCanceled(error)) return;
@@ -3505,6 +3558,10 @@ function InfiniteCanvasPage() {
             }
             if (VISIONARY_HOSTED && !hostRecoveryReadyRef.current) {
                 message.warning("正在确认上次画布任务，请稍后再重试。");
+                return;
+            }
+            if (VISIONARY_HOSTED && node.metadata?.hostImageDeliveryStatus && node.metadata.hostOperationId) {
+                retryHostImageDelivery(projectId, node.metadata.hostOperationId);
                 return;
             }
             const sourceNode = findRetrySourceNode(node.id, nodesRef.current, connectionsRef.current) || node;
@@ -3563,7 +3620,7 @@ function InfiniteCanvasPage() {
             const retryImages = retryReferenceImages || [];
 
             setRunningNodeId(node.id);
-            setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_LOADING, errorDetails: undefined, hostOperationId: undefined } } : item)));
+            setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_LOADING, errorDetails: undefined, hostOperationId: undefined, hostImageDeliveryStatus: undefined } } : item)));
             const controller = startGenerationRequest(node.id, sourceNode.id, node.id);
 
             try {
@@ -3619,7 +3676,7 @@ function InfiniteCanvasPage() {
                 const image = useReferenceImages
                     ? await requestEdit(generationConfig, prompt, retryImages, undefined, hostRequestOptions("image", node.id, controller.signal, sourceNode.id)).then((items) => items[0])
                     : await requestGeneration(generationConfig, prompt, hostRequestOptions("image", node.id, controller.signal, sourceNode.id)).then((items) => items[0]);
-                const uploadedImage = await persistGeneratedCanvasImage(image, node.id);
+                const uploadedImage = await persistGeneratedCanvasImage(image, node.id, controller.signal);
                 const imageConfig = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
                 const imageSize = fitNodeSize(uploadedImage.width, uploadedImage.height, imageConfig.width, imageConfig.height);
                 const generationMetadata = savedImageMetadata?.generationType
@@ -3652,7 +3709,7 @@ function InfiniteCanvasPage() {
                     return;
                 }
                 if (isVisionaryHostOperationPendingError(error)) {
-                    setNodes((prev) => prev.map((item) => (item.id === error.nodeId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_LOADING, errorDetails: error.message, hostOperationId: error.operationId } } : item)));
+                    setNodes((prev) => prev.map((item) => (item.id === error.nodeId ? { ...item, metadata: { ...item.metadata, ...hostedPendingImageMetadata(error) } } : item)));
                     return;
                 }
                 if (isGenerationCanceled(error)) return;
@@ -3664,7 +3721,7 @@ function InfiniteCanvasPage() {
                 setRunningNodeId(null);
             }
         },
-        [effectiveConfig, finishGenerationRequest, hostProjectLeaseOwned, hostRequestOptions, isAiConfigReady, message, openConfigDialog, startGenerationRequest],
+        [effectiveConfig, finishGenerationRequest, hostProjectLeaseOwned, hostRequestOptions, isAiConfigReady, message, openConfigDialog, projectId, startGenerationRequest],
     );
 
     const generateImageFromTextNode = useCallback(
@@ -3893,6 +3950,7 @@ function InfiniteCanvasPage() {
             <section className="relative min-w-0 flex-1 overflow-clip">
                 <CanvasSidePanelToggle />
                 <CanvasTopBar />
+                {VISIONARY_HOSTED && <CanvasImageDeliveries />}
 
                 <InfiniteCanvas
                     containerRef={containerRef}

@@ -6,6 +6,7 @@ export type HostedOperationNode = {
     metadata?: {
         status?: string;
         hostOperationId?: string;
+        hostImageDeliveryStatus?: "pending" | "failed";
         batchChildIds?: string[];
         content?: unknown;
     };
@@ -114,7 +115,7 @@ export function recoveryPatch(result: VisionaryHostImageRecoveryResult, record?:
 }
 
 export function buildHostedConfirmingNodeIds(nodes: HostedOperationNode[], connections: HostedOperationConnection[]) {
-    const pendingTargetIds = new Set(nodes.filter((node) => node.metadata?.status === "loading" && Boolean(node.metadata?.hostOperationId)).map((node) => node.id));
+    const pendingTargetIds = new Set(nodes.filter((node) => node.metadata?.status === "loading" && Boolean(node.metadata?.hostOperationId) && !node.metadata.hostImageDeliveryStatus).map((node) => node.id));
     const pendingResultIds = new Set(pendingTargetIds);
     nodes.forEach((node) => {
         if (node.metadata?.batchChildIds?.some((childId) => pendingTargetIds.has(childId))) pendingResultIds.add(node.id);

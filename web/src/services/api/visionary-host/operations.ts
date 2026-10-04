@@ -41,6 +41,17 @@ const operationStore = localforage.createInstance({
     name: "infinite-canvas",
     storeName: "visionary_host_operations",
 });
+const operationWrites = new Map<string, Promise<unknown>>();
+
+async function serializeOperationWrite<T>(key: string, write: () => Promise<T>): Promise<T> {
+    const pending = (operationWrites.get(key) || Promise.resolve()).catch(() => undefined).then(write);
+    operationWrites.set(key, pending);
+    try {
+        return await pending;
+    } finally {
+        if (operationWrites.get(key) === pending) operationWrites.delete(key);
+    }
+}
 
 export async function saveHostOperation(record: VisionaryHostOperationRecord) {
     await operationStore.setItem(visionaryHostStorageKey(record.clientOperationId), record);
@@ -48,10 +59,15 @@ export async function saveHostOperation(record: VisionaryHostOperationRecord) {
 
 export async function updateHostOperation(clientOperationId: string, patch: Partial<VisionaryHostOperationRecord>) {
     const key = visionaryHostStorageKey(clientOperationId);
-    const current = await operationStore.getItem<VisionaryHostStoredOperationRecord>(key);
-    if (!current || current.kind !== "image") return false;
-    await operationStore.setItem(key, { ...current, ...patch, updatedAt: Date.now() });
-    return true;
+    return serializeOperationWrite(key, async () => {
+        const current = await operationStore.getItem<VisionaryHostStoredOperationRecord>(key);
+        if (!current || current.kind !== "image") return false;
+        // A late pending response cannot undo a confirmed terminal state or
+        // replace its settled billing with an earlier reservation snapshot.
+        if ((current.status === "completed" || current.status === "failed") && patch.status && ["preflight", "submitting", "pending"].includes(patch.status)) return true;
+        await operationStore.setItem(key, { ...current, ...patch, updatedAt: Date.now() });
+        return true;
+    });
 }
 
 export async function saveHostTextOperation(record: VisionaryHostTextOperationRecord) {
@@ -67,7 +83,8 @@ export async function updateHostTextOperation(clientOperationId: string, patch: 
 }
 
 export async function acknowledgeHostOperation(clientOperationId: string) {
-    await operationStore.removeItem(visionaryHostStorageKey(clientOperationId));
+    const key = visionaryHostStorageKey(clientOperationId);
+    await serializeOperationWrite(key, () => operationStore.removeItem(key));
 }
 
 export async function listHostOperations(projectId: string) {

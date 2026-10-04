@@ -66,6 +66,7 @@ export type CanvasNodeMetadata = {
     groupId?: string;
     interactive?: boolean; // 插件节点「交互 ⇄ 移动」开关状态(见 CanvasNodeDefinition.interactionToggle)
     hostOperationId?: string;
+    hostImageDeliveryStatus?: "pending" | "failed";
     hostGenerationId?: string;
     chargedCredits?: number;
 };

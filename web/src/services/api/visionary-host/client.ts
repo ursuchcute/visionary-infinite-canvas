@@ -26,6 +26,8 @@ import {
     type VisionaryHostTextOperationRecord,
 } from "./operations";
 import { visionaryHostStorageKey } from "./storage-namespace";
+import { withRequestBudget } from "./request-budget";
+import { scheduleImageDeliveries } from "./image-delivery-queue";
 import type {
     VisionaryHostBilling,
     VisionaryHostBootstrap,
@@ -102,6 +104,10 @@ export class VisionaryHostOperationPendingError extends Error {
         super(message);
         this.name = "VisionaryHostOperationPendingError";
     }
+}
+
+export class VisionaryHostImageDeliveryPendingError extends VisionaryHostOperationPendingError {
+    readonly deliveryPending = true;
 }
 
 export class VisionaryHostPreflightCancelledError extends Error {
@@ -222,12 +228,11 @@ export async function requestVisionaryHostImage(context: VisionaryHostRequestCon
 
     let admitted = false;
     try {
-        const response = await hostResponse("/images", {
-            method: "POST",
-            body,
-            signal: options?.signal,
+        const { response, payload } = await withRequestBudget(options?.signal, 90_000, async (signal) => {
+            const response = await hostResponse("/images", { method: "POST", body, signal });
+            const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+            return { response, payload };
         });
-        const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
         if (!response.ok) throw responseError(response.status, payload, "图片生成失败。");
         admitted = true;
 
@@ -288,32 +293,24 @@ export async function recoverStoredVisionaryHostImages(
     projectId: string,
     onTerminal: (record: VisionaryHostOperationRecord) => Promise<boolean> | boolean,
     signal?: AbortSignal,
-    onActive?: (records: VisionaryHostOperationRecord[]) => Promise<void> | void,
+    onActive?: (records: VisionaryHostOperationRecord[], completed: VisionaryHostOperationRecord[]) => Promise<void> | void,
     imageDeliveryAckEnabled = false,
 ) {
     const records = await listHostOperations(projectId);
     throwIfAborted(signal);
 
-    let deliveryFailures = 0;
-    const attemptedTerminalIds = new Set<string>();
     const recoveryNow = Date.now();
+    const active = records.filter((record) => record.status === "submitting" || record.status === "pending");
+    const blockingPreflight = records.filter((record) => record.status === "preflight" && recoveryNow - record.createdAt < HOST_OPERATION_PREFLIGHT_GRACE_MS);
+    await onActive?.([...blockingPreflight, ...active], records.filter((record) => record.status === "completed"));
     for (const record of records.filter((item) => item.status === "preflight" && recoveryNow - item.createdAt >= HOST_OPERATION_PREFLIGHT_GRACE_MS)) {
         const failed = { ...record, status: "failed" as const, error: "图片请求在服务端提交前已中断，未扣除积分。" };
         await updateHostOperation(record.clientOperationId, { status: failed.status, error: failed.error });
-        attemptedTerminalIds.add(record.clientOperationId);
-        if (!(await finalizeRecoveredVisionaryHostImage(failed, onTerminal, imageDeliveryAckEnabled, signal))) deliveryFailures += 1;
+        Object.assign(record, failed);
     }
-    for (const record of records.filter((item) => item.status === "completed" || item.status === "failed")) {
-        attemptedTerminalIds.add(record.clientOperationId);
-        if (!(await finalizeRecoveredVisionaryHostImage(record, onTerminal, imageDeliveryAckEnabled, signal))) deliveryFailures += 1;
-    }
-
-    const active = records.filter((record) => record.status === "submitting" || record.status === "pending");
-    const blockingPreflight = records.filter((record) => record.status === "preflight" && recoveryNow - record.createdAt < HOST_OPERATION_PREFLIGHT_GRACE_MS);
-    // Let the canvas restore its node-level duplicate-submit guard before any
-    // recovery network wait. This closes the refresh race where IndexedDB had
-    // the operation but the debounced project snapshot did not yet contain it.
-    await onActive?.([...blockingPreflight, ...active]);
+    const scheduleDelivery = (terminal: VisionaryHostOperationRecord[]) => scheduleImageDeliveries(terminal, signal,
+        (record) => finalizeRecoveredVisionaryHostImage(record, onTerminal, imageDeliveryAckEnabled, signal));
+    scheduleDelivery(records);
     if (active.length) {
         // Process every active operation, not only the first server-sized
         // batch. Without chunking, a long-running first six operations could
@@ -350,14 +347,13 @@ export async function recoverStoredVisionaryHostImages(
         }
     }
 
-    // Deliver terminal records produced by this recovery pass immediately.
     const refreshed = await listHostOperations(projectId);
-    for (const record of refreshed.filter((item) => !attemptedTerminalIds.has(item.clientOperationId) && (item.status === "completed" || item.status === "failed"))) {
-        if (!(await finalizeRecoveredVisionaryHostImage(record, onTerminal, imageDeliveryAckEnabled, signal))) deliveryFailures += 1;
-    }
+    throwIfAborted(signal);
+    await onActive?.(refreshed.filter((record) => record.status === "preflight" || record.status === "submitting" || record.status === "pending"), refreshed.filter((record) => record.status === "completed"));
+    scheduleDelivery(refreshed);
     return {
         activeCount: refreshed.filter((record) => record.status === "preflight" || record.status === "submitting" || record.status === "pending").length,
-        deliveryFailures,
+        deliveryFailures: 0,
     };
 }
 
@@ -370,6 +366,7 @@ async function finalizeRecoveredVisionaryHostImage(
     let locallyDelivered = Boolean(record.localDeliveryCompletedAt);
     if (!locallyDelivered) {
         if (!(await onTerminal(record))) return false;
+        throwIfAborted(signal);
         if (record.status === "completed" && imageDeliveryAckEnabled) {
             const localDeliveryCompletedAt = Date.now();
             if (!(await updateHostOperation(record.clientOperationId, { localDeliveryCompletedAt }))) return false;
@@ -397,6 +394,7 @@ async function finalizeRecoveredVisionaryHostImage(
             return false;
         }
     }
+    throwIfAborted(signal);
     await acknowledgeHostOperation(record.clientOperationId);
     return true;
 }
@@ -556,6 +554,9 @@ export async function recoverStoredVisionaryHostTexts(
     let deliveryFailures = 0;
     const attemptedTerminalIds = new Set<string>();
     const recoveryNow = Date.now();
+    const active = records.filter((item) => item.status === "submitting" || item.status === "pending");
+    const blockingPreflight = records.filter((item) => item.status === "preflight" && recoveryNow - item.createdAt < HOST_OPERATION_PREFLIGHT_GRACE_MS);
+    await onActive?.([...blockingPreflight, ...active]);
     for (const record of records.filter((item) => item.status === "preflight" && recoveryNow - item.createdAt >= HOST_OPERATION_PREFLIGHT_GRACE_MS)) {
         const failed = { ...record, status: "failed" as const, error: "文本请求在服务端提交前已中断，未扣除积分。" };
         await updateHostTextOperation(record.clientOperationId, { status: failed.status, error: failed.error });
@@ -569,9 +570,6 @@ export async function recoverStoredVisionaryHostTexts(
         else deliveryFailures += 1;
     }
 
-    const active = records.filter((item) => item.status === "submitting" || item.status === "pending");
-    const blockingPreflight = records.filter((item) => item.status === "preflight" && recoveryNow - item.createdAt < HOST_OPERATION_PREFLIGHT_GRACE_MS);
-    await onActive?.([...blockingPreflight, ...active]);
     for (const record of active.filter(shouldRecover)) {
         throwIfAborted(signal);
         let admitted = Boolean(record.runId);
@@ -612,8 +610,10 @@ export async function recoverStoredVisionaryHostTexts(
 
 async function pollVisionaryHostImage(context: VisionaryHostRequestContext, initialRetrySeconds: number, signal?: AbortSignal): Promise<VisionaryHostImageResponse> {
     const operationId = context.clientOperationId;
+    const startedAt = Date.now();
     let retrySeconds = Math.max(1, initialRetrySeconds || 2);
     while (true) {
+        if (Date.now() - startedAt >= 180_000) throw new VisionaryHostOperationPendingError(operationId, context.nodeId, "生成时间较长，已转为后台确认。请勿重复提交该任务，可以继续生成其他图片。");
         await abortableDelay(retrySeconds * 1000, signal);
         const recovery = await recoverVisionaryHostImageBatch([operationId], signal);
         const result = recovery.results.find((item) => item.operationId === operationId);
@@ -1095,10 +1095,12 @@ async function refreshVisionaryHostCredits(state: "settled" | "refunded") {
 }
 
 async function hostJson<T>(path: string, init: RequestInit = {}) {
-    const response = await hostResponse(path, init);
-    const payload = (await response.json().catch(() => null)) as T | Record<string, unknown> | null;
-    if (!response.ok) throw responseError(response.status, isRecord(payload) ? payload : null, "画布服务请求失败。");
-    return payload as T;
+    return withRequestBudget(init.signal, 15_000, async (signal) => {
+        const response = await hostResponse(path, { ...init, signal });
+        const payload = (await response.json().catch(() => null)) as T | Record<string, unknown> | null;
+        if (!response.ok) throw responseError(response.status, isRecord(payload) ? payload : null, "画布服务请求失败。");
+        return payload as T;
+    });
 }
 
 async function hostResponse(path: string, init: RequestInit = {}) {
