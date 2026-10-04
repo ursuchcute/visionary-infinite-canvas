@@ -242,11 +242,12 @@ export async function requestVisionaryHostImage(context: VisionaryHostRequestCon
         const actionRequired = Boolean(payload?.actionRequired);
         if (!normalized.images.length && (["failed", "not_found", "rejected"].includes(responseStatus) || actionRequired || terminalError)) {
             const error = terminalError || (actionRequired ? "本次图片任务需要人工处理，已停止生成并退回积分。" : "图片生成失败。");
-            await updateHostOperation(context.clientOperationId, {
+            const failedApplied = await updateHostOperation(context.clientOperationId, {
                 status: "failed",
                 error,
                 billing: normalized.billing,
             });
+            if (!failedApplied) throw new VisionaryHostOperationPendingError(context.clientOperationId, context.nodeId);
             publishBilling(normalized.billing);
             throw new VisionaryHostTerminalOperationError(error);
         }
@@ -257,12 +258,12 @@ export async function requestVisionaryHostImage(context: VisionaryHostRequestCon
         }
 
         const generationId = readString(payload?.id);
-        await updateHostOperation(context.clientOperationId, {
+        const pendingApplied = await updateHostOperation(context.clientOperationId, {
             status: "pending",
             generationId,
             billing: normalized.billing,
         });
-        publishBilling(normalized.billing);
+        if (pendingApplied) publishBilling(normalized.billing);
         return await pollVisionaryHostImage(context, responseRetrySeconds(payload), options?.signal);
     } catch (error) {
         if (error instanceof VisionaryHostTerminalOperationError) throw error;
@@ -279,7 +280,9 @@ export async function requestVisionaryHostImage(context: VisionaryHostRequestCon
             throw error;
         }
         if (!admitted && error instanceof VisionaryHostApiError && error.status >= 400 && error.status < 500 && error.status !== 429) {
-            await updateHostOperation(context.clientOperationId, { status: "failed", error: error.message });
+            if (!(await updateHostOperation(context.clientOperationId, { status: "failed", error: error.message }))) {
+                throw new VisionaryHostOperationPendingError(context.clientOperationId, context.nodeId);
+            }
             throw error;
         }
         // Abort, network failure, 429 and 5xx are ambiguous after the local
@@ -341,8 +344,8 @@ export async function recoverStoredVisionaryHostImages(
                         remainingCredits: recovery.credits,
                     };
                 }
-                await updateHostOperation(result.operationId, patch);
-                if (patch.billing) publishBilling(patch.billing);
+                const applied = await updateHostOperation(result.operationId, patch);
+                if (applied && patch.billing) publishBilling(patch.billing);
             }
         }
     }
@@ -625,7 +628,7 @@ async function pollVisionaryHostImage(context: VisionaryHostRequestContext, init
             const records = await listHostOperations(context.projectId);
             const record = records.find((item) => item.clientOperationId === operationId);
             const patch = recoveryPatch(result, record);
-            await updateHostOperation(operationId, patch);
+            if (!(await updateHostOperation(operationId, patch))) throw new VisionaryHostOperationPendingError(operationId, context.nodeId);
             if (patch.status !== "failed") {
                 retrySeconds = Math.max(1, result.retryAfterSeconds || recovery.retryAfterSeconds || 2);
                 continue;

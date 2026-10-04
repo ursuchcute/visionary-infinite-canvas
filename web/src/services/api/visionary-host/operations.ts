@@ -62,9 +62,9 @@ export async function updateHostOperation(clientOperationId: string, patch: Part
     return serializeOperationWrite(key, async () => {
         const current = await operationStore.getItem<VisionaryHostStoredOperationRecord>(key);
         if (!current || current.kind !== "image") return false;
-        // A late pending response cannot undo a confirmed terminal state or
-        // replace its settled billing with an earlier reservation snapshot.
-        if ((current.status === "completed" || current.status === "failed") && patch.status && ["preflight", "submitting", "pending"].includes(patch.status)) return true;
+        // Confirmed paid output wins over a late failure or pending response.
+        // Rejected snapshots must not publish older billing to the UI either.
+        if (patch.status && ((current.status === "completed" && patch.status !== "completed") || (current.status === "failed" && ["preflight", "submitting", "pending"].includes(patch.status)))) return false;
         await operationStore.setItem(key, { ...current, ...patch, updatedAt: Date.now() });
         return true;
     });

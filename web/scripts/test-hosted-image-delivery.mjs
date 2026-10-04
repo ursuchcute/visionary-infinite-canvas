@@ -216,6 +216,47 @@ assert.equal(raced.billing.chargedCredits, 20);
 await Promise.all([api.acknowledgeHostOperation("write-race"), api.updateHostOperation("write-race", { status: "pending" })]);
 assert.equal((await api.listHostOperations("race-project")).length, 0);
 
+// A pending response captured before foreground completion must not publish
+// its older reserved balance after the terminal record has already settled.
+await api.saveHostOperation(record("billing-race", "pending", "billing-project"));
+const staleBillingResponse = deferred();
+const billingEvents = [];
+const onBilling = (event) => billingEvents.push(event.detail);
+window.addEventListener("billing", onBilling);
+handleFetch = () => staleBillingResponse.promise;
+const billingScan = api.recoverStoredVisionaryHostImages("billing-project", () => false);
+await tick();
+await api.updateHostOperation("billing-race", { status: "completed", billing: { state: "settled", chargedCredits: 20, remainingCredits: 80 } });
+staleBillingResponse.resolve(Response.json({ credits: 100, results: [{ operationId: "billing-race", status: "pending", chargedCredits: 20 }] }));
+await billingScan;
+await tick();
+window.removeEventListener("billing", onBilling);
+assert.equal(billingEvents.length, 0, "ignored pending snapshots must not publish stale billing");
+assert.equal((await api.listHostOperations("billing-project"))[0].billing.remainingCredits, 80);
+
+// A late error cannot discard an already confirmed paid output either.
+await api.saveHostOperation({ ...record("paid-terminal", "completed", "terminal-project"), billing: { state: "settled", chargedCredits: 20 } });
+assert.equal(await api.updateHostOperation("paid-terminal", { status: "failed", error: "stale failure", billing: { state: "refunded", chargedCredits: 0 } }), false);
+assert.equal((await api.listHostOperations("terminal-project"))[0].status, "completed");
+assert.equal((await api.listHostOperations("terminal-project"))[0].billing.chargedCredits, 20);
+
+for (const status of [200, 403]) {
+    const posted = deferred(),
+        staleFailure = deferred();
+    const id = `paid-post-${status}`;
+    handleFetch = () => {
+        posted.resolve();
+        return staleFailure.promise;
+    };
+    const request = api.requestVisionaryHostImage({ projectId: id, nodeId: id, clientOperationId: id }, "prompt", { model: "gpt-image-2" }, []);
+    const protectedFailure = assert.rejects(request, (error) => error instanceof api.VisionaryHostOperationPendingError);
+    await posted.promise;
+    await api.updateHostOperation(id, { status: "completed", generationId: `generation-${id}`, imageUrl: `/media/${id}`, billing: { state: "settled", chargedCredits: 20 } });
+    staleFailure.resolve(Response.json({ status: "failed", error: "stale failure" }, { status }));
+    await protectedFailure;
+    assert.equal((await api.listHostOperations(id))[0].status, "completed");
+}
+
 // A stalled project persistence barrier cannot ACK a paid output. Its late
 // completion is ignored; an explicit retry must cross a fresh durable barrier.
 const projectFlush = deferred();
@@ -325,14 +366,15 @@ assert.equal(initialReady, true);
 assert.ok(timedOutSignal.aborted);
 assert.equal((await api.listHostOperations("slow-project"))[0].status, "pending");
 const context = { projectId: "submit-project", nodeId: "submit", clientOperationId: "submit" };
+const priorAdmissions = requests.filter(({ url }) => url.endsWith("/images")).length;
 await assert.rejects(api.requestVisionaryHostImage(context, "prompt", { model: "gpt-image-2" }, []), (error) => error instanceof api.VisionaryHostOperationPendingError);
 assert.equal((await api.listHostOperations("submit-project"))[0].status, "submitting");
-assert.equal(requests.filter(({ url }) => url.endsWith("/images")).length, 1);
+assert.equal(requests.filter(({ url }) => url.endsWith("/images")).length, priorAdmissions + 1);
 handleFetch = async (_url, init) => Response.json({ results: JSON.parse(init.body).operationIds.map((operationId) => ({ operationId, status: "completed", id: "original-generation" })) });
 await api.recoverStoredVisionaryHostImages("submit-project", () => true);
 await tick();
 assert.equal((await api.listHostOperations("submit-project")).length, 0);
-assert.equal(requests.filter(({ url }) => url.endsWith("/images")).length, 1);
+assert.equal(requests.filter(({ url }) => url.endsWith("/images")).length, priorAdmissions + 1);
 globalThis.setTimeout = originalTimeout;
 
 // A storage write that completes after timeout must be removed as an orphan;
