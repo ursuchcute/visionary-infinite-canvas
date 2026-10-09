@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import ts from "typescript";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -302,6 +302,53 @@ check(() => assert.deepEqual(uploadedRows[0].body.referenceImages, ["https://exa
 check(() => assert.equal(api.videoReferenceUploadUrl(signedUpload, false), signedUpload));
 check(() => assert.equal(api.videoReferenceUploadUrl("https://another.example/upload", true), "https://another.example/upload"));
 check(() => assert.throws(() => api.videoReferenceUploadUrl("http://localhost/upload", true), /地址无效/));
+
+// Assert final Grok payloads after uploads, not just the picker capabilities.
+// The initial durable preflight contains no uploaded URLs yet; its mode must
+// already reflect the selected references and survive a lost POST response.
+const grokPayloads = [];
+for (const count of [0, 1, 2, 14]) {
+    clear();
+    const c = context(`grok_references_${count}`);
+    const expectedMode = count === 0 ? "text" : count === 1 ? "image" : "reference";
+    let completedUploads = 0;
+    let sentBody;
+    const resumedBodies = [];
+    handler = async (url, init) => {
+        if (url.endsWith("upload-url")) return Response.json({ id: `ref-${completedUploads}`, uploadUrl: signedUpload, headers: { "Content-Type": "image/jpeg" } });
+        if (init.method === "PUT") return new Response(null, { status: 200 });
+        if (url.endsWith("/complete")) return Response.json({ url: `https://example.com/reference-${completedUploads++}.jpg` });
+        if (url.includes("/requests/")) return Response.json({ task: null });
+        sentBody = JSON.parse(init.body);
+        // Reject the incorrect text+images pairing as the actual API does.
+        if (sentBody.mode !== expectedMode) return Response.json({ error: "reference mode mismatch" }, { status: 400 });
+        resumedBodies.push(init.body);
+        if (resumedBodies.length === 1) throw new TypeError("POST response lost");
+        return Response.json({ task: task(c) }, { status: 202 });
+    };
+    await pending(
+        api.submitHostedVideo(c, { ...config, model: models[1].id }, models, "Grok reference test", Array(count).fill(reference), {
+            onHostOperationDurable: async () => {
+                const [preflight] = await rows();
+                assert.equal(preflight.body.mode, expectedMode);
+                assert.deepEqual(preflight.body.referenceImages, []);
+            },
+        }),
+    );
+    const [record] = await rows();
+    check(() => assert.equal(sentBody.mode, expectedMode));
+    check(() => assert.equal(sentBody.referenceImages.length, count));
+    check(() => assert.equal(completedUploads, count));
+    check(() => assert.equal(sentBody.resolution, count ? "480p" : "1080p"));
+    check(() => assert.equal(record.body.mode, expectedMode));
+    await api.recoverHostedVideo(record, new AbortController().signal);
+    check(() => assert.equal(resumedBodies[1], resumedBodies[0]));
+    check(() => assert.equal(requests.filter(({ url }) => url.endsWith("upload-url")).length, count));
+    grokPayloads.push(sentBody);
+}
+// Optional local cross-repository acceptance: export only these synthetic
+// client bodies for the main site's real Grok parser, never session headers.
+if (process.env.VISIONARY_VIDEO_PAYLOAD_FIXTURE_OUT) writeFileSync(process.env.VISIONARY_VIDEO_PAYLOAD_FIXTURE_OUT, JSON.stringify(grokPayloads, null, 2) + "\n");
 
 for (const stage of ["cancel", "timeout"]) {
     clear();

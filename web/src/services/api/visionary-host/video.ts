@@ -118,7 +118,7 @@ export async function submitHostedVideo(context: VisionaryHostRequestContext, co
             expectedCredits: params.credits,
             referenceImages: urls,
             model: params.model.id,
-            ...(params.model.id === "grok-imagine-video-1.5" ? { mode: urls.length === 0 ? "text" : urls.length === 1 ? "image" : "reference" } : {}),
+            ...(params.model.id === "grok-imagine-video-1.5" ? { mode: references.length === 0 ? "text" : references.length === 1 ? "image" : "reference" } : {}),
         },
     };
     let dispatched = false;
