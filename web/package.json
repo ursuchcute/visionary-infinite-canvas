@@ -27,7 +27,7 @@
         "format:check": "prettier --check .",
         "test:hosted-image-delivery": "node scripts/test-hosted-image-delivery.mjs",
         "test:hosted-recovery-graph": "node scripts/test-hosted-recovery-graph.mjs",
-        "test:hosted-video": "node scripts/test-hosted-video.mjs && node scripts/test-hosted-video-upload.mjs",
+        "test:hosted-video": "node scripts/test-hosted-video.mjs && node scripts/test-hosted-video-upload.mjs && node scripts/test-hosted-video-player.mjs",
         "test:hosted-math-dependency": "node scripts/test-hosted-math-dependency.mjs"
     },
     "dependencies": {

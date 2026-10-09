@@ -655,19 +655,34 @@ function VideoNodeContent({ node, theme }: NodeContentRendererProps) {
                 <span className="text-sm">空视频节点</span>
             </div>
         );
-    if (node.metadata.hostVideoTaskId) return <HostedVideoPlayer source={node.metadata.content} theme={theme} />;
+    if (node.metadata.hostVideoTaskId) return <HostedVideoPlayer key={node.metadata.content} source={node.metadata.content} theme={theme} />;
     return <video src={node.metadata.content} controls className="h-full w-full rounded-[18px] bg-black object-contain" data-canvas-no-zoom />;
 }
 
 function HostedVideoPlayer({ source, theme }: { source: string; theme: NodeContentRendererProps["theme"] }) {
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const [activated, setActivated] = useState(false);
+    const [previewReady, setPreviewReady] = useState(false);
     const [attempt, setAttempt] = useState(0);
     const [failedSource, setFailedSource] = useState<string | null>(null);
     const key = `${source}:${attempt}`;
+    useEffect(() => {
+        if (!videoRef.current) return;
+        if (typeof IntersectionObserver === "undefined") { setActivated(true); return; }
+        const observer = new IntersectionObserver(entries => {
+            if (!entries.some(entry => entry.isIntersecting)) return;
+            setActivated(true);
+            observer.disconnect();
+        });
+        observer.observe(videoRef.current);
+        return () => observer.disconnect();
+    }, []);
     return <div className="relative h-full w-full">
-        <video key={key} src={source} controls preload={attempt ? "metadata" : "none"} playsInline onError={() => setFailedSource(key)} className="h-full w-full rounded-[18px] bg-black object-contain" data-canvas-no-zoom />
+        <video ref={videoRef} key={key} src={activated ? source : undefined} controls preload="metadata" playsInline onLoadedData={() => setPreviewReady(true)} onError={() => setFailedSource(key)} className="h-full w-full rounded-[18px] bg-black object-contain" data-canvas-no-zoom />
+        {!previewReady && failedSource !== key && <div className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 text-center text-xs" style={{ color: theme.node.placeholder }} role="status">视频已生成，正在加载预览</div>}
         {failedSource === key && <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-[18px] text-sm" style={{ background: theme.node.fill, color: theme.node.text }} data-canvas-no-zoom>
             <span>视频读取暂时失败，生成结果已保留</span>
-            <button type="button" className="cursor-pointer rounded-md px-3 py-2 hover:bg-black/5 dark:hover:bg-white/10" onClick={event => { event.stopPropagation(); setFailedSource(null); setAttempt(value => value + 1); }}>重新加载视频</button>
+            <button type="button" className="cursor-pointer rounded-md px-3 py-2 hover:bg-black/5 dark:hover:bg-white/10" onClick={event => { event.stopPropagation(); setPreviewReady(false); setFailedSource(null); setAttempt(value => value + 1); }}>重新加载视频</button>
         </div>}
     </div>;
 }
