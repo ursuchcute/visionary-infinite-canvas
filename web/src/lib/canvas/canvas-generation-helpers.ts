@@ -1,4 +1,5 @@
-import { defaultConfig, type AiConfig } from "@/stores/use-config-store";
+import { VISIONARY_HOSTED } from "@/constant/visionary-hosted";
+import { defaultConfig, modelMatchesCapability, type AiConfig } from "@/stores/use-config-store";
 import { resolveImageUrl, uploadImage } from "@/services/image-storage";
 import { resolveMediaUrl } from "@/services/file-storage";
 import { imageMetadata, referenceUrl } from "@/lib/canvas/canvas-node-factory";
@@ -93,7 +94,8 @@ export function getInputSummary(inputs: NodeGenerationInput[]) {
 
 export function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | undefined, mode: CanvasNodeGenerationMode): AiConfig {
     const defaultModel = mode === "image" ? config.imageModel : mode === "video" ? config.videoModel : mode === "audio" ? config.audioModel : config.textModel;
-    const model = node?.metadata?.model || defaultModel || (mode === "audio" ? defaultConfig.audioModel : config.model || defaultConfig.model);
+    const selectedModel = node?.metadata?.model;
+    const model = (VISIONARY_HOSTED && selectedModel && !modelMatchesCapability(config, selectedModel, mode) ? undefined : selectedModel) || defaultModel || (mode === "audio" ? defaultConfig.audioModel : config.model || defaultConfig.model);
     const quality = node?.metadata?.quality || (mode === "image" ? "auto" : config.quality || defaultConfig.quality);
     const ratioOptions = mode === "image" ? resolveCanvasImageAspectRatios(config, model) : [];
     const resolvedImageParameters = mode === "image" ? resolveCanvasImageParameters(node?.metadata, ratioOptions) : null;

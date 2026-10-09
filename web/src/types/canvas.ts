@@ -68,6 +68,7 @@ export type CanvasNodeMetadata = {
     hostOperationId?: string;
     hostImageDeliveryStatus?: "pending" | "failed";
     hostGenerationId?: string;
+    hostVideoTaskId?: string;
     chargedCredits?: number;
 };
 

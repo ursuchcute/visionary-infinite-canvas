@@ -76,7 +76,7 @@ type HostImageParameters = {
     optimizeChineseText?: boolean;
 };
 
-type HostOperationRequestOptions = {
+export type HostOperationRequestOptions = {
     signal?: AbortSignal;
     hostAdmissionNodeId?: string;
     hostAdmissionGroupId?: string;
@@ -89,6 +89,7 @@ export class VisionaryHostApiError extends Error {
     constructor(
         readonly status: number,
         message: string,
+        readonly code?: string,
     ) {
         super(message);
         this.name = "VisionaryHostApiError";
@@ -153,10 +154,10 @@ export function isVisionaryHostPreflightCancelledError(error: unknown): error is
     return error instanceof VisionaryHostPreflightCancelledError;
 }
 
-export function createVisionaryOperationContext(projectId: string, nodeId: string, kind: "image" | "text" | "quote"): VisionaryHostRequestContext {
+export function createVisionaryOperationContext(projectId: string, nodeId: string, kind: "image" | "text" | "quote" | "video"): VisionaryHostRequestContext {
     const id = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     return {
-        clientOperationId: `canvas:${kind}:${id}`,
+        clientOperationId: kind === "video" ? `canvas_video_${id}` : `canvas:${kind}:${id}`,
         projectId,
         nodeId,
     };
@@ -1082,22 +1083,28 @@ function recoveryBilling(chargedCredits: number | undefined, credits: number | u
     };
 }
 
+let billingBalanceRevision = 0;
 function publishBilling(billing: VisionaryHostBilling) {
+    if (Number.isFinite(billing.remainingCredits)) billingBalanceRevision += 1;
     window.dispatchEvent(new CustomEvent(VISIONARY_HOST_BILLING_EVENT, { detail: billing }));
 }
 
-async function refreshVisionaryHostCredits(state: "settled" | "refunded") {
+let creditsRefreshRevision = 0;
+export async function refreshVisionaryHostCredits(state: "settled" | "refunded") {
+    const revision = ++creditsRefreshRevision;
+    const balanceRevision = billingBalanceRevision;
     const bootstrap = await fetchVisionaryHostBootstrap();
-    publishBilling({
+    if (revision === creditsRefreshRevision && balanceRevision === billingBalanceRevision) publishBilling({
         state,
         reservedCredits: 0,
         chargedCredits: 0,
         refundedCredits: 0,
         remainingCredits: bootstrap.user.credits,
     });
+    return bootstrap;
 }
 
-async function hostJson<T>(path: string, init: RequestInit = {}) {
+export async function hostJson<T>(path: string, init: RequestInit = {}) {
     return withRequestBudget(init.signal, 15_000, async (signal) => {
         const response = await hostResponse(path, { ...init, signal });
         const payload = (await response.json().catch(() => null)) as T | Record<string, unknown> | null;
@@ -1153,8 +1160,8 @@ function responseError(status: number, payload: Record<string, unknown> | null, 
     if (status === 401) return new VisionaryHostApiError(status, "画布会话已失效，请返回主站重新打开画布。");
     if (status === 403) return new VisionaryHostApiError(status, raw || "当前账号没有画布使用权限。");
     if (status === 404) return new VisionaryHostApiError(status, raw || "画布功能暂未开放。");
-    if (status === 429) return new VisionaryHostApiError(status, raw || "请求过于频繁，请稍后再试。");
-    return new VisionaryHostApiError(status, raw);
+    if (status === 429) return new VisionaryHostApiError(status, raw || "请求过于频繁，请稍后再试。", readString(payload?.code));
+    return new VisionaryHostApiError(status, raw, readString(payload?.code));
 }
 
 function normalizeRatio(value?: string) {

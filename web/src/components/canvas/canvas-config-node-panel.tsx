@@ -1,3 +1,5 @@
+import { resolveHostedVideoParameters } from "@/hosted/video-parameters";
+import { useVisionaryHostStore } from "@/stores/use-visionary-host-store";
 import type { CSSProperties } from "react";
 import { Image as ImageIcon, LoaderCircle, MessageSquare, Music2, Play, Settings2, Square, Video } from "lucide-react";
 import { Button, Segmented } from "antd";
@@ -25,11 +27,15 @@ type CanvasConfigNodePanelProps = {
 };
 
 export function CanvasConfigNodePanel({ node, isRunning, isConfirming = false, inputSummary, onConfigChange, onGenerate, onStop, onComposerToggle }: CanvasConfigNodePanelProps) {
+    const videoEnabled = useVisionaryHostStore(state => Boolean(state.bootstrap?.features.video));
     const globalConfig = useEffectiveConfig();
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const mode = node.metadata?.generationMode || "image";
     const config = buildNodeConfig(globalConfig, node, mode);
+    const videoModels = useVisionaryHostStore(state => state.bootstrap?.video?.models);
+    const videoParameters = VISIONARY_HOSTED && mode === "video" ? resolveHostedVideoParameters(config, videoModels || [], inputSummary.imageCount) : null;
+    const videoUnavailable = VISIONARY_HOSTED && mode === "video" && (!videoEnabled || !videoParameters?.model.acceptingSubmissions || videoParameters.credits == null);
     const chipStyle = { background: theme.node.fill, borderColor: theme.node.stroke, color: theme.node.text };
     const hasAnyInput = Boolean(inputSummary.textCount || inputSummary.imageCount || inputSummary.videoCount || inputSummary.audioCount);
     const hasComposerContent = Boolean((node.metadata?.composerContent ?? node.metadata?.prompt ?? "").trim());
@@ -70,6 +76,7 @@ export function CanvasConfigNodePanel({ node, isRunning, isConfirming = false, i
                                     </span>
                                 ),
                             },
+                            ...(VISIONARY_HOSTED && videoEnabled ? [{ value: "video", label: "视频" }] : []),
                             ...(!VISIONARY_HOSTED
                                 ? [
                                       {
@@ -111,7 +118,7 @@ export function CanvasConfigNodePanel({ node, isRunning, isConfirming = false, i
             <div className={`mb-2 grid min-w-0 cursor-default items-center gap-2 ${mode === "image" || mode === "video" || mode === "audio" ? "grid-cols-[minmax(0,1fr)_148px]" : "grid-cols-1"}`} onMouseDown={(event) => event.stopPropagation()}>
                 <ModelPicker className="canvas-compact-control h-10" config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability={mode} showIcon={false} onMissingConfig={() => openConfigDialog(true)} fullWidth />
                 {mode === "video" ? (
-                    <CanvasVideoSettingsPopover config={config} placement="topRight" buttonClassName="canvas-compact-control !h-10 !w-full !justify-start !rounded-lg !px-2" onConfigChange={(key, value) => onConfigChange(node.id, videoConfigPatch(key, value))} />
+                    <CanvasVideoSettingsPopover config={config} imageCount={inputSummary.imageCount} placement="topRight" buttonClassName="canvas-compact-control !h-10 !w-full !justify-start !rounded-lg !px-2" onConfigChange={(key, value) => onConfigChange(node.id, videoConfigPatch(key, value))} />
                 ) : mode === "image" && VISIONARY_HOSTED ? (
                     <div className="flex min-w-0 items-center overflow-x-auto">
                             <CanvasImageParameterControls config={config} metadata={node.metadata} hideQuality={shouldHideCanvasImageQuality(config.model, node.metadata)} onConfigPatch={(patch) => onConfigChange(node.id, patch)} />
@@ -127,7 +134,7 @@ export function CanvasConfigNodePanel({ node, isRunning, isConfirming = false, i
                 type="primary"
                 className="mt-auto !h-9 !w-full !cursor-pointer !rounded-lg"
                 danger={isRunning}
-                disabled={showConfirming || (!isRunning && !canGenerate)}
+                disabled={showConfirming || (!isRunning && (!canGenerate || videoUnavailable))}
                 onMouseDown={(event) => event.stopPropagation()}
                 onClick={() => (showConfirming ? undefined : isRunning ? onStop(node.id) : onGenerate(node.id))}
             >
@@ -146,7 +153,7 @@ export function CanvasConfigNodePanel({ node, isRunning, isConfirming = false, i
                     ) : (
                         <>
                             <Play className="size-4" />
-                            <span>开始生成</span>
+                            <span>{videoParameters?.credits != null ? `生成 · ${videoParameters.credits} 积分` : videoUnavailable ? "视频暂不可用" : "开始生成"}</span>
                         </>
                     )}
                 </span>

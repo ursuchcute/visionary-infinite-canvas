@@ -1,3 +1,4 @@
+import { useVisionaryHostStore } from "@/stores/use-visionary-host-store";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ImageIcon, List, Music2, Settings2, Video, X } from "lucide-react";
 
@@ -84,6 +85,7 @@ type CanvasCreateMenuSurfaceProps = {
  */
 function CanvasCreateMenuSurface({ position, title, dataAttribute, onCreate, onClose }: CanvasCreateMenuSurfaceProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const videoEnabled = useVisionaryHostStore(state => Boolean(state.bootstrap?.features.video));
     const menuRef = useRef<HTMLDivElement>(null);
     const [clampedPosition, setClampedPosition] = useState(position);
 
@@ -135,7 +137,7 @@ function CanvasCreateMenuSurface({ position, title, dataAttribute, onCreate, onC
             <div className="grid gap-1">
                 <ConnectionCreateOption theme={theme} icon={<List className="size-5" />} title="文本生成" onClick={() => onCreate(CanvasNodeType.Text)} />
                 <ConnectionCreateOption theme={theme} icon={<ImageIcon className="size-5" />} title="图片生成" onClick={() => onCreate(CanvasNodeType.Image)} />
-                <ConnectionCreateOption theme={theme} icon={<Video className="size-5" />} title="视频生成" badge={VISIONARY_HOSTED ? "即将上线" : undefined} disabled={VISIONARY_HOSTED} onClick={() => onCreate(CanvasNodeType.Video)} />
+                <ConnectionCreateOption theme={theme} icon={<Video className="size-5" />} title="视频生成" badge={VISIONARY_HOSTED && !videoEnabled ? "即将上线" : undefined} disabled={VISIONARY_HOSTED && !videoEnabled} onClick={() => onCreate(CanvasNodeType.Video)} />
                 <ConnectionCreateOption theme={theme} icon={<Music2 className="size-5" />} title={VISIONARY_HOSTED ? "音频生成" : "音频参考"} badge={VISIONARY_HOSTED ? "即将上线" : undefined} disabled={VISIONARY_HOSTED} onClick={() => onCreate(CanvasNodeType.Audio)} />
                 {!VISIONARY_HOSTED ? <ConnectionCreateOption theme={theme} icon={<Settings2 className="size-5" />} title="配置节点" onClick={() => onCreate(CanvasNodeType.Config)} /> : null}
             </div>

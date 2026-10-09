@@ -3,6 +3,7 @@ export type VisionaryHostFeatureFlags = {
     text: boolean;
     imageDeliveryAck?: boolean;
     referenceImageDirectUpload?: boolean;
+    video?: boolean;
 };
 
 export type VisionaryHostUser = {
@@ -26,6 +27,7 @@ export type VisionaryHostTextModel = {
 };
 
 export type VisionaryHostBootstrap = {
+    video?: { models: VisionaryHostVideoModel[]; defaultModel: string };
     protocolVersion: 1;
     releaseVersion: string;
     storageNamespace: string;
@@ -45,6 +47,14 @@ export type VisionaryHostBootstrap = {
         models: VisionaryHostTextModel[];
         defaultModel: string;
     };
+};
+
+export type VisionaryHostVideoModel = {
+    id: string;
+    label: string;
+    acceptingSubmissions: boolean;
+    config: { resolutions: string[]; aspectRatios: string[]; durationMin: number; durationMax: number; max1080Duration: number; imageMax: number };
+    creditRules: { resolution: string; credits: number | null; unit: string }[];
 };
 
 export type VisionaryHostExchangeResponse = {

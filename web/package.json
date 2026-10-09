@@ -19,14 +19,16 @@
         "test:canvas-composer-controls": "node scripts/test-canvas-composer-controls.mjs",
         "test:canvas-reference-connections": "node scripts/test-canvas-reference-connections.mjs",
         "test:hosted-runtime-contract": "node scripts/test-hosted-runtime-contract.mjs",
-        "test:release": "npm run test:canvas-header-ui && npm run test:canvas-composer-controls && npm run test:canvas-reference-connections && npm run test:hosted-runtime-contract && npm run test:hosted-image-delivery && npm run test:hosted-recovery-graph",
+        "test:release": "npm run test:canvas-header-ui && npm run test:canvas-composer-controls && npm run test:canvas-reference-connections && npm run test:hosted-runtime-contract && npm run test:hosted-image-delivery && npm run test:hosted-recovery-graph && npm run test:hosted-video && npm run test:hosted-math-dependency",
         "typecheck": "tsc --noEmit",
         "benchmark:canvas": "node scripts/canvas-benchmark.mjs",
         "start": "vite preview --host 0.0.0.0 --port 3000",
         "format": "prettier --write .",
         "format:check": "prettier --check .",
         "test:hosted-image-delivery": "node scripts/test-hosted-image-delivery.mjs",
-        "test:hosted-recovery-graph": "node scripts/test-hosted-recovery-graph.mjs"
+        "test:hosted-recovery-graph": "node scripts/test-hosted-recovery-graph.mjs",
+        "test:hosted-video": "node scripts/test-hosted-video.mjs",
+        "test:hosted-math-dependency": "node scripts/test-hosted-math-dependency.mjs"
     },
     "dependencies": {
         "@ant-design/icons": "^6.1.1",
@@ -77,6 +79,7 @@
         "hono": "4.12.32",
         "js-yaml": "4.3.0",
         "postcss": "8.5.23",
-        "dompurify": "3.4.16"
+        "dompurify": "3.4.16",
+        "katex": "0.18.2"
     }
 }

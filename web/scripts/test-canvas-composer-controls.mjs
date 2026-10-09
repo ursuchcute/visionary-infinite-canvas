@@ -81,7 +81,7 @@ assert.match(project, /clickTargetNodeId: nextSelected\.size === 1 && nextSelect
 assert.match(project, /const wasClick = !dragRef\.current\.hasMoved && Boolean\(clickedNodeId\)/);
 assert.doesNotMatch(project, /initialSelectedNodes\.length === 1/);
 assert.match(project, /setSelectedNodeIds\(new Set\(\)\);[\s\S]*setToolbarNodeId\(null\);[\s\S]*setDialogNodeId\(null\);/);
-assert.match(createMenus, /title="视频生成" badge=\{VISIONARY_HOSTED \? "即将上线" : undefined\} disabled=\{VISIONARY_HOSTED\}/);
+assert.match(createMenus, /title="视频生成" badge=\{VISIONARY_HOSTED && !videoEnabled \? "即将上线" : undefined\} disabled=\{VISIONARY_HOSTED && !videoEnabled\}/);
 assert.match(createMenus, /title=\{VISIONARY_HOSTED \? "音频生成" : "音频参考"\}/);
 assert.match(createMenus, /\{!VISIONARY_HOSTED \? <ConnectionCreateOption[\s\S]*title="配置节点"/);
 assert.match(createMenus, /function CanvasCreateMenuSurface/);
@@ -103,7 +103,7 @@ assert.match(sidePanel, /aria-label="删除提示词"/);
 assert.match(sidePanel, /<MyPromptEditorDialog[\s\S]*onSave=\{savePersonalPrompt\}/);
 assert.match(toolbar, /toolbarCollapsed[\s\S]*background: "#ff6a00", borderColor: "#ff6a00", color: "#ffffff"/);
 assert.match(toolbar, /该功能即将上线/);
-assert.match(toolbar, /onClick=\{VISIONARY_HOSTED \? showComingSoonTip : onAddVideo\}/);
+assert.match(toolbar, /onClick=\{VISIONARY_HOSTED && !videoEnabled \? showComingSoonTip : onAddVideo\}/);
 assert.match(toolbar, /onClick=\{VISIONARY_HOSTED \? showComingSoonTip : onAddAudio\}/);
 assert.doesNotMatch(toolbar, /\{!VISIONARY_HOSTED \? \([\s\S]*id="tool-video"/);
 assert.doesNotMatch(toolbar, /id="tool-(?:config|group)"/);

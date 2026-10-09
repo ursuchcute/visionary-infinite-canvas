@@ -1,3 +1,4 @@
+import { useVisionaryHostStore } from "@/stores/use-visionary-host-store";
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode, RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Button, Segmented, Switch } from "antd";
@@ -49,6 +50,7 @@ export function CanvasToolbar({
     onBackgroundModeChange: (mode: CanvasBackgroundMode) => void;
     onShowImageInfoChange: (show: boolean) => void;
 }) {
+    const videoEnabled = useVisionaryHostStore(state => Boolean(state.bootstrap?.features.video));
     const wrapRef = useRef<HTMLDivElement>(null);
     const rootRef = useRef<HTMLDivElement>(null);
     const colorTheme = useThemeStore((state) => state.theme);
@@ -157,7 +159,7 @@ export function CanvasToolbar({
                             wrapRef={wrapRef}
                             onTipX={setTipX}
                             onHover={setHovered}
-                            onClick={VISIONARY_HOSTED ? showComingSoonTip : onAddVideo}
+                            onClick={VISIONARY_HOSTED && !videoEnabled ? showComingSoonTip : onAddVideo}
                         >
                             <Video className="size-4.5" />
                         </ToolbarButton>

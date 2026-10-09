@@ -1,3 +1,5 @@
+import { useHostedVideoRecovery } from "./use-hosted-video-recovery";
+import { submitHostedVideo } from "@/services/api/visionary-host/video";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent as ReactChangeEvent, DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { flushSync } from "react-dom";
@@ -536,8 +538,10 @@ function InfiniteCanvasPage() {
         [projectId, updateProject],
     );
 
+    const hostedVideo = useHostedVideoRecovery(projectId, hostProjectLeaseOwned && projectLoaded, nodesRef, persistHostedRecoveryNodes);
+
     const hostRequestOptions = useCallback(
-        (kind: "image" | "text", nodeId: string, signal: AbortSignal, originNodeId = nodeId, admissionGroupId?: string): RequestOptions => {
+        (kind: "image" | "text" | "video", nodeId: string, signal: AbortSignal, originNodeId = nodeId, admissionGroupId?: string): RequestOptions => {
             if (!VISIONARY_HOSTED) return { signal };
             const hostContext = createVisionaryOperationContext(projectId, nodeId, kind);
             return {
@@ -3018,6 +3022,7 @@ function InfiniteCanvasPage() {
                 message.warning("正在确认上次画布任务，请稍后再提交。");
                 return;
             }
+            if (VISIONARY_HOSTED && mode === "video" && !hostedVideo.ready) { message.warning("正在恢复上次视频任务，请稍后再提交。"); return; }
             const sourceNode = nodesRef.current.find((node) => node.id === nodeId);
             const hasForegroundRequest = Array.from(generationRequestsRef.current.values()).some((request) => request.originNodeId === nodeId || request.runningNodeId === nodeId || request.targetNodeId === nodeId);
             if (VISIONARY_HOSTED && (hasForegroundRequest || buildHostedConfirmingNodeIds(nodesRef.current, connectionsRef.current).has(nodeId))) {
@@ -3091,7 +3096,7 @@ function InfiniteCanvasPage() {
                 // Hosted image upload reads storage Blobs sequentially in the
                 // client compressor. Avoid allocating a Base64 copy of every
                 // connected reference before that bounded path begins.
-                if (!VISIONARY_HOSTED || mode !== "image") {
+                if (!VISIONARY_HOSTED || (mode !== "image" && mode !== "video")) {
                     generationContext = await hydrateNodeGenerationContext(rawGenerationContext);
                 }
             } catch (error) {
@@ -3106,7 +3111,7 @@ function InfiniteCanvasPage() {
                 setRunningNodeId(null);
                 return;
             }
-            const markSourceStatus = sourceNode?.type !== CanvasNodeType.Image && !editingTextNode;
+            const markSourceStatus = sourceNode?.type !== CanvasNodeType.Image && !editingTextNode && !(VISIONARY_HOSTED && mode === "video");
             const statusPrompt = sourceNode?.type === CanvasNodeType.Config ? effectivePrompt : prompt;
             if (!effectivePrompt && (mode === "text" || mode === "audio")) {
                 finishGenerationRequest(nodeId, runController);
@@ -3399,6 +3404,12 @@ function InfiniteCanvasPage() {
                     if (!isEmptyVideoNode) setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: nodeId, toNodeId: videoId }]);
                     const controller = startGenerationRequest(videoId, nodeId, nodeId, runController);
                     try {
+                        if (VISIONARY_HOSTED) {
+                            if (generationContext.referenceVideos.length || generationContext.referenceAudios.length) throw new Error("画布视频目前支持文字和参考图片，请移除参考视频或音频。");
+                            const options = hostRequestOptions("video", videoId, controller.signal, nodeId);
+                            await submitHostedVideo(options.hostContext!, generationConfig, useVisionaryHostStore.getState().bootstrap?.video?.models || [], effectivePrompt, generationContext.referenceImages, options);
+                            return;
+                        }
                         const video = await storeGeneratedVideo(
                             await requestVideoGeneration(generationConfig, effectivePrompt, generationContext.referenceImages, generationContext.referenceVideos, generationContext.referenceAudios, { signal: controller.signal }),
                         );
@@ -3429,6 +3440,7 @@ function InfiniteCanvasPage() {
                         );
                     } finally {
                         finishGenerationRequest(videoId, controller);
+                        if (VISIONARY_HOSTED) hostedVideo.refresh();
                     }
                     return;
                 }
@@ -3544,7 +3556,7 @@ function InfiniteCanvasPage() {
                 setRunningNodeId(null);
             }
         },
-        [effectiveConfig, finishGenerationRequest, hostProjectLeaseOwned, hostRequestOptions, isAiConfigReady, message, openConfigDialog, startGenerationRequest],
+        [effectiveConfig, finishGenerationRequest, hostProjectLeaseOwned, hostRequestOptions, hostedVideo.ready, hostedVideo.refresh, isAiConfigReady, message, openConfigDialog, startGenerationRequest],
     );
     useEffect(() => {
         generateNodeRef.current = handleGenerateNode;
@@ -3560,8 +3572,13 @@ function InfiniteCanvasPage() {
                 message.warning("正在确认上次画布任务，请稍后再重试。");
                 return;
             }
+            if (VISIONARY_HOSTED && node.type === CanvasNodeType.Video && node.metadata?.hostVideoTaskId && node.metadata.status === "success") { hostedVideo.refresh(); return; }
             if (VISIONARY_HOSTED && node.metadata?.hostImageDeliveryStatus && node.metadata.hostOperationId) {
                 retryHostImageDelivery(projectId, node.metadata.hostOperationId);
+                return;
+            }
+            if (VISIONARY_HOSTED && node.type === CanvasNodeType.Video) {
+                await handleGenerateNode(node.id, "video", node.metadata?.prompt || "");
                 return;
             }
             const sourceNode = findRetrySourceNode(node.id, nodesRef.current, connectionsRef.current) || node;
@@ -3721,7 +3738,7 @@ function InfiniteCanvasPage() {
                 setRunningNodeId(null);
             }
         },
-        [effectiveConfig, finishGenerationRequest, hostProjectLeaseOwned, hostRequestOptions, isAiConfigReady, message, openConfigDialog, projectId, startGenerationRequest],
+        [effectiveConfig, finishGenerationRequest, hostProjectLeaseOwned, hostRequestOptions, isAiConfigReady, message, openConfigDialog, projectId, startGenerationRequest, handleGenerateNode, hostedVideo.refresh],
     );
 
     const generateImageFromTextNode = useCallback(
@@ -3879,7 +3896,7 @@ function InfiniteCanvasPage() {
                 <CanvasNodePromptPanel
                     node={panelNode}
                     isRunning={runningNodeId === panelNode.id}
-                    isConfirming={!hostRecoveryReady || hostedConfirmingNodeIds.has(panelNode.id)}
+                    isConfirming={!hostRecoveryReady || (panelNode.type === CanvasNodeType.Video && !hostedVideo.ready) || hostedConfirmingNodeIds.has(panelNode.id)}
                     mentionReferences={mentionReferencesByNodeId.get(panelNode.id) || EMPTY_REFERENCES}
                     onReferenceRemove={removePromptReference}
                     onPromptChange={handleNodePromptChange}
@@ -3893,7 +3910,7 @@ function InfiniteCanvasPage() {
                     }}
                 />
             ),
-        [configInputsById, confirmStopGeneration, handleConfigNodeChange, handleGenerateNode, handleNodePromptChange, hostRecoveryReady, hostedConfirmingNodeIds, mentionReferencesByNodeId, removePromptReference, renderPluginPanel, runningNodeId],
+        [configInputsById, confirmStopGeneration, handleConfigNodeChange, handleGenerateNode, handleNodePromptChange, hostRecoveryReady, hostedVideo.ready, hostedConfirmingNodeIds, mentionReferencesByNodeId, removePromptReference, renderPluginPanel, runningNodeId],
     );
 
     const renderNodeContentPanel = useCallback(
@@ -3901,7 +3918,7 @@ function InfiniteCanvasPage() {
             <CanvasConfigNodePanel
                 node={contentNode}
                 isRunning={runningNodeId === contentNode.id}
-                isConfirming={!hostRecoveryReady || hostedConfirmingNodeIds.has(contentNode.id)}
+                isConfirming={!hostRecoveryReady || (contentNode.metadata?.generationMode === "video" && !hostedVideo.ready) || hostedConfirmingNodeIds.has(contentNode.id)}
                 inputSummary={getInputSummary(configInputsById.get(contentNode.id) || [])}
                 onConfigChange={handleConfigNodeChange}
                 onComposerToggle={() => setDialogNodeId((current) => (current === contentNode.id ? null : contentNode.id))}
@@ -3912,7 +3929,7 @@ function InfiniteCanvasPage() {
                 }}
             />
         ),
-        [configInputsById, confirmStopGeneration, handleConfigNodeChange, handleGenerateNode, hostRecoveryReady, hostedConfirmingNodeIds, runningNodeId],
+        [configInputsById, confirmStopGeneration, handleConfigNodeChange, handleGenerateNode, hostRecoveryReady, hostedVideo.ready, hostedConfirmingNodeIds, runningNodeId],
     );
 
     if (VISIONARY_HOSTED && hostProjectLeaseStatus !== "owned") {

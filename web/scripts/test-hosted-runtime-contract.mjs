@@ -160,7 +160,7 @@ assert.match(project, /const textCount = VISIONARY_HOSTED \? 1/);
 assert.match(project, /buildHostedConfirmingNodeIds\(nodesRef\.current, connectionsRef\.current\)\.has\(nodeId\)/);
 assert.match(project, /restoreActiveHostedOperationGuards/);
 assert.match(project, /if \(VISIONARY_HOSTED && !hostRecoveryReadyRef\.current\)/);
-assert.match(project, /isConfirming=\{!hostRecoveryReady \|\| hostedConfirmingNodeIds\.has\(panelNode\.id\)\}/);
+assert.match(project, /isConfirming=\{!hostRecoveryReady \|\| \(panelNode\.type === CanvasNodeType\.Video && !hostedVideo\.ready\) \|\| hostedConfirmingNodeIds\.has\(panelNode\.id\)\}/);
 assert.match(project, /图片已生成且不会重复扣分，领取暂未完成/);
 assert.match(project, /浏览器存储空间不足，请释放空间后重新领取原图/);
 assert.match(project, /if \(VISIONARY_HOSTED\) await flushAssetStorePersistence\(\);\s*message\.success\("已加入我的资产"\)/);
@@ -180,7 +180,7 @@ assert.match(project, /if \(!existingNode \|\| targetConflict\) \{[\s\S]*recover
 assert.match(project, /if \(!existingNode \|\| targetConflict\) \{[\s\S]*recoveredHostedNodeId\("text", record\.clientOperationId\)/);
 assert.match(project, /if \(!existingNode \|\| targetConflict\) return true/);
 assert.ok((project.match(/withRequestBudget\(controller.signal, 15_000, \(\) => getImageBlob\(/g) || []).length >= 2);
-assert.match(project, /if \(!VISIONARY_HOSTED \|\| mode !== "image"\) \{\s*generationContext = await hydrateNodeGenerationContext\(rawGenerationContext\);/);
+assert.match(project, /if \(!VISIONARY_HOSTED \|\| \(mode !== "image" && mode !== "video"\)\) \{\s*generationContext = await hydrateNodeGenerationContext\(rawGenerationContext\);/);
 assert.match(project, /finishGenerationRequest\(nodeId, runController\);\s*setRunningNodeId\(null\);[\s\S]*参考图片读取失败/);
 assert.ok((project.match(/await persistHostedRecoveryNodes\(/g) || []).length >= 4);
 assert.match(project, /await flushCanvasStorePersistence\(\);/);

@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 import { defaultConfig, encodeChannelModel, useConfigStore, type ChannelModel, type ModelChannel } from "@/stores/use-config-store";
 import type { VisionaryHostBilling, VisionaryHostBootstrap } from "@/services/api/visionary-host/contracts";
+import { refreshVisionaryHostCredits } from "@/services/api/visionary-host/client";
 import { startVisionaryHostSession } from "@/services/api/visionary-host/session";
 import { setVisionaryHostStorageNamespace } from "@/services/api/visionary-host/storage-namespace";
 
@@ -11,6 +12,7 @@ type VisionaryHostState = {
     error: string;
     initialize: () => Promise<void>;
     updateCredits: (credits: number) => void;
+    refreshVideoConfiguration: () => Promise<void>;
     applyBilling: (billing: VisionaryHostBilling) => void;
 };
 
@@ -36,6 +38,8 @@ export const useVisionaryHostStore = create<VisionaryHostState>((set, get) => ({
                     applyBootstrapConfig(bootstrap);
                     await hydrateHostedUserStorage();
                     hostedUserStorageHydrated = true;
+                } else {
+                    applyVideoCatalog(bootstrap);
                 }
                 set({ status: "ready", bootstrap, error: "" });
             },
@@ -53,6 +57,11 @@ export const useVisionaryHostStore = create<VisionaryHostState>((set, get) => ({
                 initialization = null;
             });
         return initialization;
+    },
+    refreshVideoConfiguration: async () => {
+        const bootstrap = await refreshVisionaryHostCredits("settled");
+        applyVideoCatalog(bootstrap);
+        set(state => ({ bootstrap: state.bootstrap ? { ...state.bootstrap, video: bootstrap.video, features: { ...state.bootstrap.features, video: bootstrap.features.video } } : null }));
     },
     updateCredits: (credits) =>
         set((state) => ({
@@ -72,6 +81,7 @@ export const useVisionaryHostStore = create<VisionaryHostState>((set, get) => ({
 function applyBootstrapConfig(bootstrap: VisionaryHostBootstrap) {
     const imageModels = bootstrap.features.image ? bootstrap.image.models : [];
     const textModels = bootstrap.features.text ? bootstrap.text.models : [];
+    const videoModels = bootstrap.features.video ? bootstrap.video?.models || [] : [];
     const models: ChannelModel[] = [
         ...imageModels.map((model) => ({ name: model.id, label: model.label, capability: "image" as const, ratios: model.ratios, imageSizes: model.imageSizes })),
         ...textModels.map((model) => ({
@@ -79,6 +89,7 @@ function applyBootstrapConfig(bootstrap: VisionaryHostBootstrap) {
             label: hostedTextModelLabel(model),
             capability: "text" as const,
         })),
+        ...videoModels.map((model) => ({ name: model.id, label: model.label, capability: "video" as const })),
     ];
     const channel = {
         id: "visionary-host",
@@ -102,7 +113,7 @@ function applyBootstrapConfig(bootstrap: VisionaryHostBootstrap) {
             model: imageModel,
             imageModel,
             textModel,
-            videoModel: "",
+            videoModel: videoModels[0] ? encodeChannelModel(channel.id, videoModels[0].id) : "",
             audioModel: "",
             count: "1",
             canvasImageCount: "1",
@@ -114,6 +125,18 @@ function applyBootstrapConfig(bootstrap: VisionaryHostBootstrap) {
         },
         isConfigOpen: false,
     }));
+}
+
+// Refresh only video choices; session renewal must preserve image/text drafts.
+function applyVideoCatalog(bootstrap: VisionaryHostBootstrap) {
+    const video = bootstrap.features.video ? bootstrap.video?.models || [] : [];
+    const current = useConfigStore.getState().config;
+    const choices = video.map(model => ({ name: model.id, label: model.label, capability: "video" as const }));
+    const channel = current.channels.find(item => item.id === "visionary-host");
+    if (!channel || JSON.stringify(channel.models.filter(model => model.capability === "video")) === JSON.stringify(choices)) return;
+    const channels = current.channels.map(item => item.id === channel.id ? { ...item, models: [...item.models.filter(model => model.capability !== "video"), ...choices] } : item);
+    const ids = video.map(model => encodeChannelModel(channel.id, model.id));
+    useConfigStore.setState({ config: { ...current, channels, models: channels.flatMap(item => item.models.map(model => encodeChannelModel(item.id, model.name))), videoModel: ids.includes(current.videoModel) ? current.videoModel : ids[0] || "" } });
 }
 
 function hostedTextModelLabel(model: VisionaryHostBootstrap["text"]["models"][number]) {

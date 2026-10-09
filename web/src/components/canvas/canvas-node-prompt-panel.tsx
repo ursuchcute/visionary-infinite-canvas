@@ -1,3 +1,5 @@
+import { useVisionaryHostStore } from "@/stores/use-visionary-host-store";
+import { resolveHostedVideoParameters } from "@/hosted/video-parameters";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowUp, LoaderCircle, Square } from "lucide-react";
 import { Button } from "antd";
@@ -54,8 +56,13 @@ export function CanvasNodePromptPanel({ node, isRunning, isConfirming = false, o
     const [prompt, setPrompt] = useState(node.metadata?.prompt || "");
     const projectId = useParams<{ id: string }>().id || "";
     const mentionReferenceSignature = useMemo(() => mentionReferences.map((reference) => `${reference.nodeId}:${reference.label}`).join("|"), [mentionReferences]);
-    const attachedImageReferences = useMemo(() => (mode === "image" ? mentionReferences.filter((reference) => reference.kind === "image" && reference.active) : []), [mentionReferences, mode]);
-    const quote = useVisionaryImageQuote(projectId, node.id, config, mode === "image" && modelAvailable);
+    const attachedImageReferences = useMemo(() => (mode === "image" || mode === "video" ? mentionReferences.filter((reference) => reference.kind === "image" && reference.active) : []), [mentionReferences, mode]);
+    const imageQuote = useVisionaryImageQuote(projectId, node.id, config, mode === "image" && modelAvailable);
+
+    const videoModels = useVisionaryHostStore(state => state.bootstrap?.video?.models);
+    const videoReferenceCount = mentionReferences.filter(reference => reference.kind === "image" && reference.active).length;
+    const videoParameters = VISIONARY_HOSTED && mode === "video" ? resolveHostedVideoParameters(config, videoModels || [], videoReferenceCount) : null;
+    const quote = mode === "video" && VISIONARY_HOSTED ? { loading: false, credits: videoParameters?.credits ?? undefined, error: videoParameters?.model.acceptingSubmissions ? undefined : "视频模型维护中" } : imageQuote;
 
     // 切换节点或连线引用集合变化时恢复父层 prompt；普通输入和生成状态变化不会重建编辑器。
     useEffect(() => {
@@ -166,7 +173,7 @@ export function CanvasNodePromptPanel({ node, isRunning, isConfirming = false, o
                     ) : mode === "video" ? (
                         <>
                             <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="video" showIcon={false} onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" />
-                            <CanvasVideoSettingsPopover config={config} buttonClassName="!h-10 !max-w-[170px] !justify-start !rounded-full !px-3" onConfigChange={(key, value) => onConfigChange(node.id, videoConfigPatch(key, value))} />
+                            <CanvasVideoSettingsPopover config={config} imageCount={videoReferenceCount} buttonClassName="!h-10 !max-w-[170px] !justify-start !rounded-full !px-3" onConfigChange={(key, value) => onConfigChange(node.id, videoConfigPatch(key, value))} />
                         </>
                     ) : mode === "audio" ? (
                         <>
@@ -179,7 +186,7 @@ export function CanvasNodePromptPanel({ node, isRunning, isConfirming = false, o
                 </div>
                 <GenerationAction
                     isRunning={isRunning}
-                    disabled={!prompt.trim() || !modelAvailable || isConfirmingHostedOperation}
+                    disabled={!prompt.trim() || !modelAvailable || isConfirmingHostedOperation || (VISIONARY_HOSTED && mode === "video" && (!videoParameters?.model.acceptingSubmissions || videoParameters.credits == null))}
                     theme={theme}
                     creditLabel={VISIONARY_HOSTED ? (isConfirmingHostedOperation ? "确认中" : !modelAvailable ? "维护中" : quote.loading ? "…" : quote.credits == null ? "--" : String(quote.credits)) : "--"}
                     creditTitle={
@@ -187,7 +194,7 @@ export function CanvasNodePromptPanel({ node, isRunning, isConfirming = false, o
                             ? isConfirmingHostedOperation
                                 ? "正在确认已提交任务，请勿重复生成"
                                 : !modelAvailable
-                                  ? "图片生成维护中"
+                                  ? mode === "video" ? "视频生成维护中" : "图片生成维护中"
                                   : quote.error || (quote.credits == null ? "正在估算所需积分" : `预计消耗 ${quote.credits} 积分，服务端结算为准`)
                             : "当前本地生成配置不计算积分"
                     }
