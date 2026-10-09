@@ -5,6 +5,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 
 import { parseChangelog } from "./src/lib/release";
+import { HOSTED_REFERENCE_UPLOAD_ORIGIN, DEV_VIDEO_REFERENCE_UPLOAD_PATH, isDevVideoReferenceUpload } from "./src/services/api/visionary-host/reference-upload-transport";
 
 const webDir = dirname(fileURLToPath(import.meta.url));
 const localVersion = readFileSync(resolve(webDir, "../VERSION"), "utf8").trim() || "dev";
@@ -140,6 +141,19 @@ export default defineConfig({
             : undefined,
         proxy: visionaryHosted
             ? {
+                  [DEV_VIDEO_REFERENCE_UPLOAD_PATH]: {
+                      target: HOSTED_REFERENCE_UPLOAD_ORIGIN,
+                      changeOrigin: true,
+                      bypass: (req) => (isDevVideoReferenceUpload(req.method, req.url) ? undefined : false),
+                      rewrite: (path) => path.slice(DEV_VIDEO_REFERENCE_UPLOAD_PATH.length),
+                      configure(proxy) {
+                          proxy.on("proxyReq", (request) => {
+                              request.removeHeader("cookie");
+                              request.removeHeader("authorization");
+                              request.removeHeader("origin");
+                          });
+                      },
+                  },
                   "/api/canvas/v1": {
                       target: visionaryHostApiOrigin,
                       changeOrigin: false,

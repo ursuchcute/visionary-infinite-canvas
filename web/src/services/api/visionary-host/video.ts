@@ -10,6 +10,7 @@ import type { ReferenceImage } from "@/types/image";
 import { getImageBlob } from "@/services/image-storage";
 import { prepareReferenceImageForUpload } from "@/lib/reference-image-compression";
 import { resolveHostedVideoParameters } from "@/hosted/video-parameters";
+import { videoReferenceUploadUrl } from "./reference-upload-transport";
 
 export type HostedVideoTask = { id: string; clientRequestId: string; status: string; billingStatus?: string; chargedCredits?: number; refundedCredits?: number; error?: string | null };
 export type HostedVideoOperation = VisionaryHostRequestContext & { kind: "video"; phase: "preflight" | "submitted" | "failed"; body: Record<string, unknown>; task?: HostedVideoTask; error?: string; createdAt: number };
@@ -82,9 +83,14 @@ async function uploadReference(reference: ReferenceImage, signal?: AbortSignal) 
             signal: uploadSignal,
             body: JSON.stringify({ kind: "image", contentType: blob.type, size: blob.size, filename: reference.name }),
         });
-        const target = new URL(ticket.uploadUrl);
-        if (target.protocol !== "https:") throw new Error("参考图片上传地址无效。");
-        const uploaded = await fetch(ticket.uploadUrl, { method: "PUT", headers: ticket.headers, body: blob, signal: uploadSignal });
+        const target = videoReferenceUploadUrl(ticket.uploadUrl, import.meta.env.DEV);
+        let uploaded: Response;
+        try {
+            uploaded = await fetch(target, { method: "PUT", headers: ticket.headers, body: blob, signal: uploadSignal });
+        } catch (error) {
+            if (uploadSignal.aborted) throw error;
+            throw new Error("参考图片上传失败，请检查网络后重试。", { cause: error });
+        }
         if (!uploaded.ok) throw new Error("参考图片上传失败，请重试。");
         const result = await hostJson<{ url: string }>(`/videos/references/${encodeURIComponent(ticket.id)}/complete`, { method: "POST", signal: uploadSignal });
         if (!result.url?.startsWith("https://")) throw new Error("参考图片读取地址无效。");
@@ -98,8 +104,6 @@ export async function submitHostedVideo(context: VisionaryHostRequestContext, co
     if (!prompt.trim() || prompt.length > 10_000) throw new Error("视频提示词需要 1–10000 个字。");
     if (references.length > params.model.config.imageMax) throw new Error(`当前模型最多支持 ${params.model.config.imageMax} 张参考图。`);
     const urls: string[] = [];
-    for (const reference of references) urls.push(await uploadReference(reference, options.signal));
-    options.signal?.throwIfAborted();
     const record: HostedVideoOperation = {
         ...context,
         kind: "video",
@@ -123,6 +127,7 @@ export async function submitHostedVideo(context: VisionaryHostRequestContext, co
         await options.onHostOperationTargetReady?.(context);
         await withRequestBudget(options.signal, 15_000, () => save(record));
         await options.onHostOperationDurable?.(context);
+        for (const reference of references) urls.push(await uploadReference(reference, options.signal));
         options.signal?.throwIfAborted();
         record.phase = "submitted";
         await withRequestBudget(options.signal, 15_000, () => save(record));

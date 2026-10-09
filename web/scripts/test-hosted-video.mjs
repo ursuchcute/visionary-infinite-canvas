@@ -34,14 +34,14 @@ const stubs = {
     localforage: "export default globalThis.__videoTests.storage;",
     "@/constant/visionary-hosted": `export const VISIONARY_HOSTED = true, VISIONARY_HOST_BILLING_EVENT = 'billing', VISIONARY_HOST_PROTOCOL_VERSION = 1, VISIONARY_HOST_SESSION_INVALID_EVENT = 'invalid', VISIONARY_RELEASE_VERSION = 'test'; export const normalizeHostedModel = value => value.split('::').at(-1).trim();`,
     "@/stores/use-visionary-host-store": "export const useVisionaryHostStore = {getState: () => ({refreshVideoConfiguration: async () => {globalThis.__videoTests.refresh++;}})};",
-    "@/services/image-storage": 'export const getImageBlob = async () => null, resolveImageUrl = async () => "";',
-    "@/lib/reference-image-compression": 'export const prepareReferenceImageForUpload = async () => {throw Error("unused");};',
+    "@/services/image-storage": 'export const getImageBlob = async () => globalThis.__videoTests.imageBlob || null, resolveImageUrl = async () => "";',
+    "@/lib/reference-image-compression": 'export const prepareReferenceImageForUpload = async blob => { if(globalThis.__videoTests.compressionError) throw Error("compression failed"); return blob; };',
     "@/stores/canvas/use-host-image-delivery-store": "export const getHostImageDelivery = () => undefined, clearHostImageDelivery = () => {}, setHostImageDelivery = () => {};",
     react: "export const useCallback = x => x, useEffect = effect => { globalThis.__videoTests.effect = effect; }, useRef = current => ({current}), useState = initial => [initial, value => {globalThis.__videoTests.readyProject = value;}];",
 };
 const result = await build({
     stdin: {
-        contents: `export * from './src/services/api/visionary-host/video'; export * from './src/services/api/visionary-host/client'; export * from './src/hosted/video-parameters'; export * from './src/pages/canvas/use-hosted-video-recovery';`,
+        contents: `export * from './src/services/api/visionary-host/video'; export * from './src/services/api/visionary-host/reference-upload-transport'; export * from './src/services/api/visionary-host/client'; export * from './src/hosted/video-parameters'; export * from './src/pages/canvas/use-hosted-video-recovery';`,
         resolveDir: root,
         loader: "ts",
     },
@@ -50,6 +50,7 @@ const result = await build({
     platform: "node",
     format: "esm",
     write: false,
+    define: { "import.meta.env.DEV": "true" },
     plugins: [
         {
             name: "faults",
@@ -232,6 +233,115 @@ await assert.rejects(api.submitHostedVideo(context("abort_12345"), config, model
 check(() => assert.equal(sent, false));
 await assert.rejects(api.submitHostedVideo(context("refs_123456"), config, models, "prompt", Array(10).fill({}), {}), /最多支持/);
 check(() => assert.equal(sent, false));
+
+// Reference preparation is part of durable preflight, never paid admission.
+const signedUpload = `${api.HOSTED_REFERENCE_UPLOAD_ORIGIN}/ocoimage/video-references/test/reference.jpg?X-Amz-Signature=${"a".repeat(64)}`;
+const reference = { storageKey: "reference", name: "reference.jpg" };
+for (const stage of ["missing", "compression", "ticket", "network", "put", "complete"]) {
+    clear();
+    globalThis.__videoTests.imageBlob = stage === "missing" ? null : new Blob(["image"], { type: "image/jpeg" });
+    globalThis.__videoTests.compressionError = stage === "compression";
+    let cleaned = false;
+    handler = async (url, init) => {
+        if (url.endsWith("upload-url")) return stage === "ticket" ? Response.json({ error: "ticket failed" }, { status: 503 }) : Response.json({ id: "ref-1", uploadUrl: signedUpload, headers: { "Content-Type": "image/jpeg" } });
+        if (init.method === "PUT") {
+            if (stage === "network") throw new TypeError("Failed to fetch");
+            return new Response(null, { status: stage === "put" ? 403 : 200 });
+        }
+        if (url.endsWith("/complete")) return Response.json({ error: "complete failed" }, { status: 400 });
+        throw new Error("Unexpected paid submission");
+    };
+    await assert.rejects(
+        api.submitHostedVideo(context(`upload_${stage}`), config, models, "prompt", [reference], {
+            onHostOperationPreflightFailed: async () => {
+                cleaned = true;
+            },
+        }),
+    );
+    check(() => assert.equal(cleaned, true));
+    check(() => assert.equal(stores.get("visionary_host_video_operations").size, 0));
+    check(() =>
+        assert.equal(
+            requests.some(({ url }) => url.includes("/models/")),
+            false,
+        ),
+    );
+}
+globalThis.__videoTests.compressionError = false;
+globalThis.__videoTests.imageBlob = new Blob(["image"], { type: "image/jpeg" });
+clear();
+const referenceOrder = [];
+const referenceContext = context("uploaded_reference");
+handler = async (url, init) => {
+    if (url.endsWith("upload-url")) {
+        referenceOrder.push("ticket");
+        return Response.json({ id: "ref-1", uploadUrl: signedUpload, headers: { "Content-Type": "image/jpeg" } });
+    }
+    if (init.method === "PUT") {
+        referenceOrder.push("put");
+        assert.equal(url, api.videoReferenceUploadUrl(signedUpload, true));
+        return new Response(null, { status: 200 });
+    }
+    if (url.endsWith("/complete")) {
+        referenceOrder.push("complete");
+        return Response.json({ url: "https://example.com/reference.jpg" });
+    }
+    referenceOrder.push("paid");
+    assert.deepEqual(JSON.parse(init.body).referenceImages, ["https://example.com/reference.jpg"]);
+    return Response.json({ task: task(referenceContext) }, { status: 202 });
+};
+await pending(
+    api.submitHostedVideo(referenceContext, config, models, "prompt", [reference], {
+        onHostOperationTargetReady: async () => referenceOrder.push("target"),
+        onHostOperationDurable: async () => referenceOrder.push("durable"),
+    }),
+);
+check(() => assert.deepEqual(referenceOrder, ["target", "durable", "ticket", "put", "complete", "paid"]));
+const uploadedRows = await rows();
+check(() => assert.deepEqual(uploadedRows[0].body.referenceImages, ["https://example.com/reference.jpg"]));
+check(() => assert.equal(api.videoReferenceUploadUrl(signedUpload, false), signedUpload));
+check(() => assert.equal(api.videoReferenceUploadUrl("https://another.example/upload", true), "https://another.example/upload"));
+check(() => assert.throws(() => api.videoReferenceUploadUrl("http://localhost/upload", true), /地址无效/));
+
+for (const stage of ["cancel", "timeout"]) {
+    clear();
+    const controller = new AbortController();
+    const savedTimeout = globalThis.setTimeout;
+    if (stage === "timeout") globalThis.setTimeout = (fn, ms, ...args) => savedTimeout(fn, ms === 60_000 ? 20 : ms, ...args);
+    let cleaned = false;
+    handler = async (url, init) => {
+        if (url.endsWith("upload-url")) return Response.json({ id: "ref-1", uploadUrl: signedUpload, headers: { "Content-Type": "image/jpeg" } });
+        if (init.method === "PUT") {
+            if (stage === "cancel") {
+                controller.abort();
+                throw new DOMException("Aborted", "AbortError");
+            }
+            return new Promise(() => {});
+        }
+        throw new Error("Unexpected completion or paid submission");
+    };
+    try {
+        await assert.rejects(
+            api.submitHostedVideo(context(`upload_${stage}`), config, models, "prompt", [reference], {
+                signal: controller.signal,
+                onHostOperationPreflightFailed: async () => {
+                    cleaned = true;
+                },
+            }),
+            (error) => error.name === (stage === "cancel" ? "AbortError" : "TimeoutError"),
+        );
+    } finally {
+        globalThis.setTimeout = savedTimeout;
+    }
+    check(() => assert.equal(cleaned, true));
+    check(() => assert.equal(stores.get("visionary_host_video_operations").size, 0));
+    check(() =>
+        assert.equal(
+            requests.some(({ url }) => url.endsWith("/complete") || url.includes("/models/")),
+            false,
+        ),
+    );
+}
 
 clear();
 const stalled = context("stalled_body");
@@ -460,4 +570,27 @@ check(() => assert.equal(generation.buildGenerationConfig(configured, { metadata
 check(() => assert.equal(generation.buildGenerationConfig(configured, { metadata: { model: configured.imageModel } }, "video").model, configured.videoModel));
 check(() => assert.equal(generation.buildGenerationConfig(configured, { metadata: { model: "visionary-host::minimax-h3" } }, "text").model, configured.textModel));
 check(() => assert.equal(generation.buildGenerationConfig(configured, { metadata: { model: configured.imageModel } }, "image").model, configured.imageModel));
+// Run the real page's generic failure mapper: an empty video target can be
+// the source itself, while an existing image source must retain its result.
+const projectAst = ts.createSourceFile("project.tsx", readFileSync(path.join(root, "src/pages/canvas/project.tsx"), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+let failureMap;
+function findFailureMap(node) {
+    if (ts.isCallExpression(node) && node.expression.getText(projectAst) === "prev.map" && node.getText(projectAst).includes("pendingChildIds.includes(node.id)") && node.getText(projectAst).includes("markSourceStatus")) failureMap = node;
+    ts.forEachChild(node, findFailureMap);
+}
+findFailureMap(projectAst);
+assert.ok(failureMap, "actual page failure mapper must be tested");
+const failedPage = ts.transpileModule(`const NODE_STATUS_ERROR='error'; export function apply(prev, nodeId, pendingChildIds, markSourceStatus, errorDetails) { return ${failureMap.getText(projectAst)}; }`, {
+    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+});
+const failedNodes = await import(`data:text/javascript;base64,${Buffer.from(failedPage.outputText).toString("base64")}`);
+const emptyVideo = { id: "video", metadata: { status: "loading", prompt: "keep prompt" } };
+const imageSource = { id: "image", metadata: { status: "success", content: "keep image" } };
+const videoFailure = failedNodes.apply([emptyVideo, imageSource], "video", ["video"], false, "upload failed");
+check(() => assert.equal(videoFailure[0].metadata.status, "error"));
+check(() => assert.equal(videoFailure[0].metadata.prompt, "keep prompt"));
+check(() => assert.equal(videoFailure[1], imageSource));
+const childFailure = failedNodes.apply([imageSource, emptyVideo], "image", ["video"], false, "upload failed");
+check(() => assert.equal(childFailure[0], imageSource));
+check(() => assert.equal(childFailure[1].metadata.status, "error"));
 console.log(`Hosted video: ${checks} assertions passed (real client/API/storage/recovery/graph functions; no paid upstream calls).`);
